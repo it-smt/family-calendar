@@ -242,9 +242,10 @@ class Device:
         )
         self.db.execute(self._apply_statements[entity_type], values)
 
-    def superseded_edits(self) -> list[dict[str, Any]]:
+    def superseded_edits(self, *, unnotified_only: bool = False) -> list[dict[str, Any]]:
+        clause = " AND notified = 0" if unnotified_only else ""
         rows = self.db.execute(
-            "SELECT * FROM superseded_edits WHERE dismissed = 0 ORDER BY id"
+            f"SELECT * FROM superseded_edits WHERE dismissed = 0{clause} ORDER BY id"
         )
         return [
             {**dict(row), "mine": json.loads(row["mine"]), "theirs": json.loads(row["theirs"])}

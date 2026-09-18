@@ -502,3 +502,40 @@ async def test_an_edit_that_changes_nothing_raises_no_notice(api):
 
     alice.close()
     bob.close()
+
+
+async def test_a_rejected_push_also_produces_a_notice(api):
+    """The other way an edit is lost: the server refuses it outright.
+
+    When a push carries a row the server considers stale, it applies nothing and
+    says so. The device clears the flag either way — it and the server agree on
+    what is current. The edit is still gone, so the notice has to come from the
+    same place: the pull that brings the winning row back.
+    """
+    alice, bob = await household_of_two(api)
+
+    task_id = alice.create_task("Doctor", starts_at="2026-09-20T14:00:00.000Z")
+    await alice.sync()
+    await bob.sync()
+
+    # Bob edits and lands first.
+    bob.clock = skewed_clock(timedelta(minutes=5))
+    bob.update_task(task_id, title="Bob's version")
+    await bob.sync()
+
+    # Alice's edit is older, so her push is refused outright.
+    alice.update_task(task_id, title="Alice's version")
+    pushed = await alice.push()
+    assert pushed["applied"] == [], "the push should have been refused as stale"
+    assert alice.dirty_count() == 0
+
+    await alice.pull()
+
+    notices = alice.superseded_edits()
+    assert len(notices) == 1
+    assert notices[0]["mine"]["title"] == "Alice's version"
+    assert notices[0]["theirs"]["title"] == "Bob's version"
+    assert alice.task(task_id)["title"] == "Bob's version"
+
+    alice.close()
+    bob.close()

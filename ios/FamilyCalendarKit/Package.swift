@@ -28,6 +28,9 @@ let package = Package(
         .testTarget(
             name: "FamilyCalendarKitTests",
             dependencies: ["FamilyCalendarKit"],
+            // The same fixtures the server's test suite checks against
+            // python-dateutil.
+            resources: [.process("Fixtures")],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
     ]

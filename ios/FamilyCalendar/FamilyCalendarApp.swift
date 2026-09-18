@@ -35,8 +35,9 @@ struct FamilyCalendarApp: App {
                 environment.start()
             case .background:
                 // A sync on the way out, so the other phone does not wait for
-                // the app to be opened again.
-                environment.syncNow()
+                // the app to be opened again — and a fresh schedule, because
+                // from here until the next launch the alerts are all there is.
+                environment.enteringBackground()
             default:
                 break
             }

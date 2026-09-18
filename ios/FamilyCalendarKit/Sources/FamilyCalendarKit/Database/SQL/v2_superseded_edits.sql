@@ -19,10 +19,15 @@ CREATE TABLE superseded_edits (
     theirs        TEXT NOT NULL,
     actor_id      TEXT,
     superseded_at TEXT NOT NULL,
-    dismissed     INTEGER NOT NULL DEFAULT 0
+    dismissed     INTEGER NOT NULL DEFAULT 0,
+    -- Set once the person has been told. A banner only reaches someone who
+    -- opens the app, and the whole point is that they should not have to.
+    notified      INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX ix_superseded_edits_open
     ON superseded_edits (superseded_at) WHERE dismissed = 0;
 CREATE INDEX ix_superseded_edits_entity
     ON superseded_edits (entity_type, entity_id);
+CREATE INDEX ix_superseded_edits_unnotified
+    ON superseded_edits (id) WHERE notified = 0;

@@ -24,6 +24,9 @@ public struct SupersededEdit: Codable, FetchableRecord, PersistableRecord, Ident
     public var actorID: UUID?
     public var supersededAt: Date
     public var dismissed: Bool
+    /// Whether the person has been told. A banner only reaches someone who
+    /// opens the app; losing an edit deserves more than that.
+    public var notified: Bool
 
     public enum CodingKeys: String, CodingKey {
         case id
@@ -34,6 +37,7 @@ public struct SupersededEdit: Codable, FetchableRecord, PersistableRecord, Ident
         case actorID = "actor_id"
         case supersededAt = "superseded_at"
         case dismissed
+        case notified
     }
 
     public enum Columns {
@@ -42,6 +46,7 @@ public struct SupersededEdit: Codable, FetchableRecord, PersistableRecord, Ident
         public static let entityID = Column(CodingKeys.entityID)
         public static let supersededAt = Column(CodingKeys.supersededAt)
         public static let dismissed = Column(CodingKeys.dismissed)
+        public static let notified = Column(CodingKeys.notified)
     }
 
     public static var databaseUUIDEncodingStrategy: DatabaseUUIDEncodingStrategy {
@@ -92,5 +97,21 @@ public struct SupersededEdit: Codable, FetchableRecord, PersistableRecord, Ident
         try filter(Columns.dismissed == false)
             .order(Columns.supersededAt.desc)
             .fetchAll(db)
+    }
+
+    /// Notices the person has not been told about yet.
+    public static func unnotified(_ db: Database) throws -> [SupersededEdit] {
+        try filter(Columns.notified == false && Columns.dismissed == false)
+            .order(Columns.id)
+            .fetchAll(db)
+    }
+
+    public static func markNotified(_ notices: [SupersededEdit], in db: Database) throws {
+        let ids = notices.compactMap(\.id)
+        guard !ids.isEmpty else { return }
+        try db.execute(
+            sql: "UPDATE superseded_edits SET notified = 1 WHERE id IN (\(ids.map { _ in "?" }.joined(separator: ", ")))",
+            arguments: StatementArguments(ids)
+        )
     }
 }
