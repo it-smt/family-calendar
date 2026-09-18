@@ -32,8 +32,8 @@ public struct WidgetStore: Sendable {
             let tasks = try CalendarTask
                 .filter(CalendarTask.Columns.deletedAt == nil)
                 .fetchAll(db)
-            let categories = try Category
-                .filter(Category.Columns.deletedAt == nil)
+            let categories = try TaskCategory
+                .filter(TaskCategory.Columns.deletedAt == nil)
                 .fetchAll(db)
             let shopping = try ShoppingItem
                 .filter(ShoppingItem.Columns.deletedAt == nil)

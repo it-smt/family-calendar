@@ -7,7 +7,7 @@ import UIKit
 
 /// Managing categories. Colour and a name, nothing more.
 public struct CategoriesView: View {
-    @State private var categories: [Category] = []
+    @State private var categories: [TaskCategory] = []
     @State private var newName: String = ""
     @State private var newColor: Color = .blue
     @State private var observation: Task<Void, Never>?

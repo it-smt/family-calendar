@@ -113,7 +113,7 @@ public struct DayView: View {
 /// One task in the list.
 struct TaskRow: View {
     let task: CalendarTask
-    let category: Category?
+    let category: TaskCategory?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -185,7 +185,7 @@ struct SyncIndicator: View {
 }
 
 struct CategoryFilterMenu: View {
-    let categories: [Category]
+    let categories: [TaskCategory]
     @Binding var selection: UUID?
 
     var body: some View {

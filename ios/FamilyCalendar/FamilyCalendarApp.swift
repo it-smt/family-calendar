@@ -23,7 +23,7 @@ struct FamilyCalendarApp: App {
                     environment.start()
                     delegate.environment = environment
                     delegate.pushRegistration = PushRegistration(
-                        api: SyncAPI(baseURL: Configuration.serverURL), credentials: credentials
+                        api: SyncAPI(baseURL: AppServer.url), credentials: credentials
                     )
                     state = .ready(environment)
                 }
@@ -68,7 +68,7 @@ struct FamilyCalendarApp: App {
 
             let environment = try AppEnvironment(
                 database: database,
-                api: SyncAPI(baseURL: Configuration.serverURL),
+                api: SyncAPI(baseURL: AppServer.url),
                 credentials: credentials,
                 householdID: session.householdID,
                 currentUserID: session.userID
@@ -76,7 +76,7 @@ struct FamilyCalendarApp: App {
             environment.start()
             delegate.environment = environment
             delegate.pushRegistration = PushRegistration(
-                api: SyncAPI(baseURL: Configuration.serverURL), credentials: credentials
+                api: SyncAPI(baseURL: AppServer.url), credentials: credentials
             )
             state = .ready(environment)
         } catch {
@@ -85,8 +85,11 @@ struct FamilyCalendarApp: App {
     }
 }
 
-enum Configuration {
-    /// Set this to wherever the server runs. One value, because there is one
-    /// deployment and two people using it.
-    static let serverURL = URL(string: "http://localhost:8000")!
+/// Where the app finds the server. One value, because there is one deployment
+/// and two people using it.
+///
+/// Not `Configuration`: GRDB has a type by that name, and this file is one
+/// import away from meaning the wrong one.
+enum AppServer {
+    static let url = URL(string: "http://localhost:8000")!
 }

@@ -1,7 +1,11 @@
 import Foundation
 import GRDB
 
-public struct Category: HouseholdScopedRecord {
+/// Named `TaskCategory`, not `Category`: the plain name is ambiguous the moment
+/// a file imports SwiftUI or UIKit alongside this module, and every view that
+/// shows a colour needs both. The same reasoning as `CalendarTask`. The table is
+/// still `categories`.
+public struct TaskCategory: HouseholdScopedRecord {
     public var id: UUID
     public var householdID: UUID
     public var name: String
@@ -52,7 +56,7 @@ public struct Category: HouseholdScopedRecord {
     }
 }
 
-extension Category: TableRecord {
+extension TaskCategory: TableRecord {
     public static let databaseTableName = "categories"
 
     public enum Columns {

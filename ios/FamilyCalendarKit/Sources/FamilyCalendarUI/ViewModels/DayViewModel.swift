@@ -11,7 +11,7 @@ import Observation
 @Observable
 public final class DayViewModel {
     public private(set) var tasks: [CalendarTask] = []
-    public private(set) var categories: [UUID: Category] = [:]
+    public private(set) var categories: [UUID: TaskCategory] = [:]
     public private(set) var people: [UUID: User] = [:]
     public private(set) var notices: [SupersededEdit] = []
 

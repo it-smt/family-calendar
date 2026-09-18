@@ -19,20 +19,20 @@ public struct CategoryRepository: Sendable {
         self.onLocalChange = onLocalChange
     }
 
-    public func observeAll() -> AsyncValueObservation<[Category]> {
+    public func observeAll() -> AsyncValueObservation<[TaskCategory]> {
         ValueObservation
             .tracking { db in
-                try Category
-                    .filter(Category.Columns.deletedAt == nil)
-                    .order(Category.Columns.name)
+                try TaskCategory
+                    .filter(TaskCategory.Columns.deletedAt == nil)
+                    .order(TaskCategory.Columns.name)
                     .fetchAll(db)
             }
             .values(in: database.reader)
     }
 
     @discardableResult
-    public func create(name: String, colorHex: String, icon: String?) throws -> Category {
-        var category = Category(
+    public func create(name: String, colorHex: String, icon: String?) throws -> TaskCategory {
+        var category = TaskCategory(
             householdID: householdID, name: name, colorHex: colorHex, icon: icon
         )
         category.touch(by: currentUserID)
@@ -42,7 +42,7 @@ public struct CategoryRepository: Sendable {
         return record
     }
 
-    public func rename(_ category: Category, to name: String) throws {
+    public func rename(_ category: TaskCategory, to name: String) throws {
         var draft = category
         draft.name = name
         draft.touch(by: currentUserID)
@@ -51,7 +51,7 @@ public struct CategoryRepository: Sendable {
         onLocalChange()
     }
 
-    public func delete(_ category: Category) throws {
+    public func delete(_ category: TaskCategory) throws {
         var draft = category
         draft.markDeleted(by: currentUserID)
         let record = draft

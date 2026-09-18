@@ -85,7 +85,7 @@ struct SignInView: View {
         problem = nil
         defer { isWorking = false }
 
-        let api = SyncAPI(baseURL: Configuration.serverURL)
+        let api = SyncAPI(baseURL: AppServer.url)
         do {
             let session: SyncAPI.Session
             switch mode {

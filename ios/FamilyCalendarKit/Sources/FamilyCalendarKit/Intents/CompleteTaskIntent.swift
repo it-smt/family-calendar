@@ -54,7 +54,7 @@ public struct CompleteTaskIntent: AppIntent {
         if let session {
             let engine = try SyncEngine(
                 database: database,
-                api: SyncAPI(baseURL: WidgetConfiguration.serverURL),
+                api: SyncAPI(baseURL: WidgetServer.url),
                 credentials: CredentialStore(),
                 status: await SyncStatus(),
                 currentUserID: session.userID
@@ -69,6 +69,9 @@ public struct CompleteTaskIntent: AppIntent {
 }
 
 /// Where the widget extension finds the server. The same value the app uses.
-public enum WidgetConfiguration {
-    public nonisolated(unsafe) static var serverURL = URL(string: "http://localhost:8000")!
+///
+/// Not `WidgetConfiguration`: WidgetKit has a protocol by that name, and a
+/// widget's `var body: some WidgetConfiguration` means that one.
+public enum WidgetServer {
+    public nonisolated(unsafe) static var url = URL(string: "http://localhost:8000")!
 }

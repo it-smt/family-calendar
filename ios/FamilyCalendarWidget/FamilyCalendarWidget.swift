@@ -28,21 +28,21 @@ struct FamilyCalendarWidget: Widget {
     }
 }
 
-struct Entry: TimelineEntry {
+struct DayEntry: TimelineEntry {
     let date: Date
     let snapshot: WidgetSnapshot
 }
 
 struct Provider: TimelineProvider {
-    func placeholder(in context: Context) -> Entry {
-        Entry(date: .now, snapshot: .placeholder)
+    func placeholder(in context: Context) -> DayEntry {
+        DayEntry(date: .now, snapshot: .placeholder)
     }
 
-    func getSnapshot(in context: Context, completion: @escaping (Entry) -> Void) {
+    func getSnapshot(in context: Context, completion: @escaping (DayEntry) -> Void) {
         completion(load().first ?? placeholder(in: context))
     }
 
-    func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> Void) {
+    func getTimeline(in context: Context, completion: @escaping (Timeline<DayEntry>) -> Void) {
         let entries = load()
         let points = entries.map(\.date)
         completion(
@@ -56,13 +56,13 @@ struct Provider: TimelineProvider {
     /// Reading the database is the whole of loading. If it fails the widget
     /// shows an empty day rather than an error: a widget is not a place to
     /// report problems.
-    private func load() -> [Entry] {
+    private func load() -> [DayEntry] {
         do {
             let snapshots = try WidgetStore.shared().timeline()
-            return snapshots.map { Entry(date: $0.date, snapshot: $0) }
+            return snapshots.map { DayEntry(date: $0.date, snapshot: $0) }
         } catch {
             Log.database.error("widget could not read: \(error.localizedDescription, privacy: .public)")
-            return [Entry(date: .now, snapshot: WidgetSnapshot(date: .now, today: [], shopping: [], unsyncedCount: 0))]
+            return [DayEntry(date: .now, snapshot: WidgetSnapshot(date: .now, today: [], shopping: [], unsyncedCount: 0))]
         }
     }
 }

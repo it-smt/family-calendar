@@ -10,6 +10,6 @@ App Group entitlement as the app (`group.com.example.familycalendar`). That
 entitlement is the whole mechanism — it is what lets this process open the same
 SQLite file the app writes to, with no app launch and no network.
 
-Set `WidgetConfiguration.serverURL` to match the app's, so the tick from the
+Set `WidgetServer.url` to match the app's, so the tick from the
 widget can try to push straight away. It works without it; the change just waits
 for the app.

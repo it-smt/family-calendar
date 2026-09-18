@@ -27,7 +27,7 @@ public final class TaskEditorViewModel {
     public var locationName: String = ""
 
     public private(set) var subtasks: [Subtask] = []
-    public private(set) var categories: [Category] = []
+    public private(set) var categories: [TaskCategory] = []
     public private(set) var templates: [PackingTemplate] = []
 
     public var newSubtaskTitle: String = ""
