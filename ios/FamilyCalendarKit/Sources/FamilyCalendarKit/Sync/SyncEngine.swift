@@ -159,8 +159,12 @@ public actor SyncEngine {
                 since: cursor, limit: configuration.pullPageSize, token: token
             )
 
-            let applier = self.applier
-            try await database.writer.write { db in
+            // The count comes back out of the transaction rather than being
+            // added up from inside it. The write closure runs on the database's
+            // own queue, so reaching out to a variable in this scope would be
+            // one thread writing what another is reading.
+            let appliedFromPage = try await database.writer.write { [applier] db -> Int in
+                var count = 0
                 for change in page.changes {
                     guard let entity = SyncEntity(rawValue: change.entityType) else {
                         // A type this build does not know about. Skipping it is
@@ -172,10 +176,12 @@ public actor SyncEngine {
                     try applier.apply(
                         ChangePayload(entityType: entity, values: change.payload), to: db
                     )
-                    applied += 1
+                    count += 1
                 }
                 try SyncState.setCursor(page.cursor, in: db)
+                return count
             }
+            applied += appliedFromPage
 
             if !page.hasMore { break }
         }
