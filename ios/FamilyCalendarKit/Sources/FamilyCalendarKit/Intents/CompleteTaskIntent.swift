@@ -15,8 +15,8 @@ import WidgetKit
 /// tap on a widget until a server answers — is the thing this whole application
 /// is built to avoid.
 public struct CompleteTaskIntent: AppIntent {
-    public static var title: LocalizedStringResource = "Mark done"
-    public static var description = IntentDescription("Ticks a task off from the widget.")
+    public static let title: LocalizedStringResource = "Mark done"
+    public static let description = IntentDescription("Ticks a task off from the widget.")
 
     @Parameter(title: "Task")
     public var taskID: String

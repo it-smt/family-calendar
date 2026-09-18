@@ -14,7 +14,11 @@ public struct ChangeApplier: Sendable {
     private let supersede: [SyncEntity: String]
     private let currentUserID: UUID
 
-    public init(currentUserID: UUID, bundle: Bundle = .module) throws {
+    /// The bundle is a parameter for tests. `Bundle.module` is generated as
+    /// internal, so it cannot be a default argument on a public initializer —
+    /// hence the optional rather than the obvious spelling.
+    public init(currentUserID: UUID, bundle: Bundle? = nil) throws {
+        let bundle = bundle ?? .module
         self.currentUserID = currentUserID
         self.apply = try Self.load(from: "SQL/apply", bundle: bundle)
         self.supersede = try Self.load(from: "SQL/supersede", bundle: bundle)
