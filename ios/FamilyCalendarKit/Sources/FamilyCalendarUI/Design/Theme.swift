@@ -2,128 +2,241 @@ import SwiftUI
 
 /// The look of the thing.
 ///
-/// A calendar is looked at more often than it is used, usually for two seconds
-/// at a time, so the background does the work of saying *when* it is before a
-/// single word is read. It shifts through the day — cold and dim at night, warm
-/// at dawn, open at midday, deepening in the evening — which also means the app
-/// never looks the same twice in a row, and never looks flat.
+/// Two surfaces, kept apart on purpose. The header is a saturated block of
+/// colour that carries the date and whatever is next; everything below it sits
+/// on a plain background with solid cards. An earlier version floated frosted
+/// cards on a pastel gradient, and the result was pale grey on pale grey — with
+/// nothing to separate one thing from another, a screen stops having parts.
 public enum Theme {
-    public enum Hour: Sendable {
+    // MARK: When
+
+    /// Two stops, dark enough at both ends to carry white type.
+    ///
+    /// Named rather than written out at each use, because the same colour has
+    /// to appear on a header, on a button and behind a sheet, and three hand-
+    /// written copies of "#1E5FCC" drift apart the first time one is changed.
+    public struct Gradient: Sendable, Equatable {
+        public let from: Color
+        public let to: Color
+
+        public init(_ from: String, _ to: String) {
+            self.from = Color(hex: from)
+            self.to = Color(hex: to)
+        }
+
+        var colors: [Color] { [from, to] }
+    }
+
+    /// One per tab, so moving between them is a change of colour and not just a
+    /// change of list. The day takes the hour's; the rest are fixed, because
+    /// they have no time of their own to follow.
+    public static let shoppingGradient = Gradient("#0B7A6B", "#3FBF7F")
+    public static let feedGradient = Gradient("#4C3FA8", "#9A4BC9")
+    public static let settingsGradient = Gradient("#243B6B", "#4A79B5")
+
+    public enum Hour: Sendable, CaseIterable {
         case night, dawn, morning, afternoon, dusk
 
         public static func at(_ date: Date, calendar: Calendar = .current) -> Hour {
             switch calendar.component(.hour, from: date) {
-            case 0..<5: .night
             case 5..<9: .dawn
-            case 9..<14: .morning
-            case 14..<18: .afternoon
+            case 9..<13: .morning
+            case 13..<18: .afternoon
             case 18..<22: .dusk
             default: .night
             }
         }
 
-        /// Two stops, low saturation. Anything louder stops being a background
-        /// and starts competing with the writing on top of it.
-        var colors: [Color] {
+        /// Both stops are strong enough to carry white type, because the header
+        /// always does. A gradient that fades to something pale looks like a
+        /// mistake at the bottom edge.
+        public var gradient: Gradient {
             switch self {
-            case .night: [Color(hex: "#1B1B2F"), Color(hex: "#2B2A4A")]
-            case .dawn: [Color(hex: "#F6C7A5"), Color(hex: "#E8A0BF")]
-            case .morning: [Color(hex: "#BFD9F2"), Color(hex: "#E6EEF7")]
-            case .afternoon: [Color(hex: "#CFE3F0"), Color(hex: "#F2E6D8")]
-            case .dusk: [Color(hex: "#8E7AB5"), Color(hex: "#E7A17A")]
+            case .night: Gradient("#1A1A3A", "#3D2B63")
+            case .dawn: Gradient("#7A3B8F", "#E8734A")
+            case .morning: Gradient("#1E5FCC", "#2FA8D9")
+            case .afternoon: Gradient("#0F7B8A", "#37B5A0")
+            case .dusk: Gradient("#B33A5B", "#6B2E8F")
             }
         }
-
-        /// Where the light comes from, so the gradient has a direction rather
-        /// than being a stripe.
-        var start: UnitPoint {
-            switch self {
-            case .night: .top
-            case .dawn: .bottomLeading
-            case .morning: .topLeading
-            case .afternoon: .topTrailing
-            case .dusk: .bottomTrailing
-            }
-        }
-
-        var isDark: Bool { self == .night }
     }
 
-    /// The backdrop for every screen.
-    public struct Background: View {
-        private let hour: Hour
+    /// The coloured block behind the date. Diagonal, so it has a direction, and
+    /// with one darker corner so it does not read as a printed swatch.
+    public struct HeaderBackground: View {
+        private let gradient: Gradient
 
-        public init(at date: Date = Date()) {
-            self.hour = Hour.at(date)
+        public init(_ gradient: Gradient) {
+            self.gradient = gradient
+        }
+
+        /// The day's own header: whatever colour that hour of that day is.
+        public init(at date: Date) {
+            self.gradient = Hour.at(date).gradient
         }
 
         public var body: some View {
             ZStack {
                 LinearGradient(
-                    colors: hour.colors, startPoint: hour.start, endPoint: hour.start.opposite
+                    colors: gradient.colors, startPoint: .topLeading, endPoint: .bottomTrailing
                 )
-
-                // A soft light off one corner. Without it a two-stop gradient
-                // reads as a flat sheet on a large screen.
                 RadialGradient(
-                    colors: [.white.opacity(hour.isDark ? 0.10 : 0.45), .clear],
-                    center: .topLeading,
-                    startRadius: 0,
-                    endRadius: 520
+                    colors: [.white.opacity(0.22), .clear],
+                    center: .topTrailing, startRadius: 0, endRadius: 320
                 )
                 .blendMode(.softLight)
             }
-            .ignoresSafeArea()
+        }
+    }
+
+    /// The coloured block a screen starts with: a big title, room for a control
+    /// or two on the right, and a curve at the bottom so the plain background
+    /// below it looks like it is sliding underneath rather than butting up.
+    public struct ScreenHeader<Trailing: View>: View {
+        private let title: String
+        private let subtitle: String?
+        private let gradient: Gradient
+        private let trailing: Trailing
+
+        public init(
+            _ title: String,
+            subtitle: String? = nil,
+            gradient: Gradient,
+            @ViewBuilder trailing: () -> Trailing
+        ) {
+            self.title = title
+            self.subtitle = subtitle
+            self.gradient = gradient
+            self.trailing = trailing()
+        }
+
+        public var body: some View {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 30, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.subheadline)
+                            .foregroundStyle(.white.opacity(0.85))
+                    }
+                }
+                Spacer(minLength: 8)
+                HStack(spacing: 14) { trailing }
+                    .foregroundStyle(.white)
+                    .padding(.top, 6)
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 62)
+            .padding(.bottom, 22)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(HeaderBackground(gradient))
+            .clipShape(
+                UnevenRoundedRectangle(
+                    bottomLeadingRadius: 30, bottomTrailingRadius: 30, style: .continuous
+                )
+            )
         }
     }
 
     // MARK: Surfaces
 
-    public static let cornerRadius: CGFloat = 18
-    public static let cardPadding: CGFloat = 14
+    public static let corner: CGFloat = 16
 
-    /// A card floating over the gradient.
-    ///
-    /// Material rather than a solid fill, so the background keeps showing
-    /// through and the screen stays one thing instead of a list of boxes.
+    /// A card. Opaque, with a real shadow — the two things that make it a
+    /// separate object rather than a slightly different patch of background.
     public struct Card: ViewModifier {
-        var emphasised: Bool = false
+        var tint: Color?
 
         public func body(content: Content) -> some View {
             content
-                .padding(Theme.cardPadding)
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
-                    RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous)
-                        .fill(emphasised ? .regularMaterial : .thinMaterial)
+                    RoundedRectangle(cornerRadius: Theme.corner, style: .continuous)
+                        .fill(Color(.secondarySystemGroupedBackground))
                 )
-                .overlay(
-                    RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous)
-                        .stroke(.white.opacity(emphasised ? 0.35 : 0.18), lineWidth: 0.8)
-                )
-                .shadow(
-                    color: .black.opacity(emphasised ? 0.14 : 0.07),
-                    radius: emphasised ? 14 : 7,
-                    y: emphasised ? 7 : 3
-                )
+                .overlay(alignment: .leading) {
+                    if let tint {
+                        // A stripe on the edge, clipped to the card's corner, so
+                        // the colour belongs to the card rather than sitting
+                        // next to it.
+                        UnevenRoundedRectangle(
+                            topLeadingRadius: Theme.corner,
+                            bottomLeadingRadius: Theme.corner,
+                            style: .continuous
+                        )
+                        .fill(tint)
+                        .frame(width: 5)
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+                .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
         }
     }
+
+    // MARK: Colour
+
+    /// The colours a category can be.
+    ///
+    /// A fixed set rather than a free colour picker: eight that sit together
+    /// keep a screen looking composed, where eight arbitrary hexes make it look
+    /// like a bring-your-own-mug kitchen.
+    public static let swatches: [String] = [
+        "#FF6B6B", "#FF922B", "#F0B429", "#51CF66",
+        "#20C997", "#4DABF7", "#5C7CFA", "#CC5DE8",
+    ]
+
+    /// The nth swatch as a colour, wrapping rather than trapping — the palette
+    /// is fixed here, but the places that index into it are spread across the
+    /// app and should not each have to know how many there are.
+    public static func swatchColor(_ index: Int) -> Color {
+        let count = swatches.count
+        return Color(hex: swatches[((index % count) + count) % count])
+    }
+
+    /// A colour for something that has no colour of its own — a packing list,
+    /// say. Taken from the identifier rather than from the row's position, so
+    /// it survives another one being added above it, and from a byte of the
+    /// UUID rather than from `hashValue`, which is salted per launch and would
+    /// repaint the whole screen every time the app starts.
+    public static func swatchColor(for id: UUID) -> Color {
+        swatchColor(Int(id.uuid.0))
+    }
+
+    /// For a task with no category. Calm on purpose — it should not compete
+    /// with the ones that were given a colour deliberately.
+    public static let unlabelled = Color(hex: "#8E99AB")
+
+    /// The five a new household starts with, so the first screen has colour in
+    /// it and there is something to filter by before anyone has set anything up.
+    public static let starterCategories: [(name: String, colorHex: String)] = [
+        ("Дом", "#4DABF7"),
+        ("Дети", "#FF922B"),
+        ("Здоровье", "#51CF66"),
+        ("Работа", "#5C7CFA"),
+        ("Важное", "#FF6B6B"),
+    ]
 }
 
 extension View {
-    public func card(emphasised: Bool = false) -> some View {
-        modifier(Theme.Card(emphasised: emphasised))
+    public func card(tint: Color? = nil) -> some View {
+        modifier(Theme.Card(tint: tint))
     }
 
-    /// A screen: the gradient behind, the content over it, and no list chrome.
-    public func themedScreen(at date: Date = Date()) -> some View {
-        background(Theme.Background(at: date))
-            .scrollContentBackground(.hidden)
+    /// The plain surface everything below the header sits on.
+    public func contentBackground() -> some View {
+        background(Color(.systemGroupedBackground))
     }
-}
 
-extension UnitPoint {
-    var opposite: UnitPoint {
-        UnitPoint(x: 1 - x, y: 1 - y)
+    /// What every screen that draws its own coloured header does with it: fill
+    /// the notch, hide the system bar that would otherwise sit on top of it,
+    /// and put the plain surface behind the rest.
+    public func headeredScreen() -> some View {
+        contentBackground()
+            .ignoresSafeArea(edges: .top)
+            .toolbar(.hidden, for: .navigationBar)
     }
 }
 
@@ -147,5 +260,30 @@ extension Color {
             alpha = 1
         }
         self.init(.sRGB, red: red, green: green, blue: blue, opacity: alpha)
+    }
+}
+
+extension Theme.ScreenHeader where Trailing == EmptyView {
+    public init(_ title: String, subtitle: String? = nil, gradient: Theme.Gradient) {
+        self.init(title, subtitle: subtitle, gradient: gradient) { EmptyView() }
+    }
+}
+
+/// A small heading between groups of cards. Cards on their own are a heap; a
+/// word above them is what makes it a section.
+public struct SectionLabel: View {
+    private let text: String
+
+    public init(_ text: String) {
+        self.text = text
+    }
+
+    public var body: some View {
+        Text(text)
+            .font(.system(size: 12, weight: .bold))
+            .textCase(.uppercase)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 4)
     }
 }

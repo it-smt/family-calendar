@@ -42,6 +42,35 @@ public struct CategoryRepository: Sendable {
         return record
     }
 
+    /// The handful a brand-new household starts with.
+    ///
+    /// Colour in this app belongs to categories, so a household with none is a
+    /// grey one — and the filter, the stripe on every card and the dot in the
+    /// editor all have nothing to show. Seeding is a local write like any
+    /// other: it goes into the outbox and reaches the other phone by the
+    /// ordinary route.
+    ///
+    /// Only ever on an empty table. The second person joins by invite code and
+    /// pulls the first person's categories, so seeding for them would leave the
+    /// household with two of each.
+    public func seedStarterCategories(_ starters: [(name: String, colorHex: String)]) throws {
+        let inserted = try database.writer.write { db -> Bool in
+            guard try TaskCategory.fetchCount(db) == 0 else { return false }
+            for starter in starters {
+                var category = TaskCategory(
+                    householdID: householdID,
+                    name: starter.name,
+                    colorHex: starter.colorHex,
+                    icon: nil
+                )
+                category.touch(by: currentUserID)
+                try category.insert(db)
+            }
+            return true
+        }
+        if inserted { onLocalChange() }
+    }
+
     public func rename(_ category: TaskCategory, to name: String) throws {
         var draft = category
         draft.name = name

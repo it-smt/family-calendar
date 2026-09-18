@@ -2,16 +2,15 @@ import FamilyCalendarKit
 import OSLog
 import SwiftUI
 
-/// The day. The screen the app opens on.
+/// The day.
 ///
-/// Swipe sideways to move a day, or tap one in the strip. The list itself is
-/// cards over the gradient rather than a table: a day has three or four things
-/// in it, and a full-width separator between each of them makes four things
-/// look like a form to fill in.
+/// A coloured header carrying the date and whatever is next, then a timeline:
+/// the hour down the left, a rule joining one thing to the next, and opaque
+/// cards to the right of it. The rule is what makes a day read as a day rather
+/// than as a list of jobs.
 public struct DayView: View {
     @State private var model: DayViewModel
     @State private var editing: TaskEditorViewModel.Mode?
-    @State private var dragOffset: CGFloat = 0
     private let environment: AppEnvironment
 
     public init(environment: AppEnvironment) {
@@ -20,158 +19,200 @@ public struct DayView: View {
     }
 
     public var body: some View {
-        NavigationStack {
+        ZStack(alignment: .bottom) {
             ScrollView {
-                VStack(spacing: 14) {
-                    WeekStrip(selected: $model.day)
-                        .padding(.bottom, 2)
-
-                    ForEach(model.notices) { notice in
-                        SupersededEditRow(
-                            notice: notice,
-                            onRestore: { model.restore(notice) },
-                            onDismiss: { model.dismiss(notice) }
-                        )
-                        .card(emphasised: true)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                    }
-
-                    dayContent
-                        .id(model.day)
-                        .transition(.asymmetric(
-                            insertion: .move(edge: .trailing).combined(with: .opacity),
-                            removal: .move(edge: .leading).combined(with: .opacity)
-                        ))
+                VStack(spacing: 0) {
+                    header
+                    notices
+                    timeline
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 90)
             }
-            .themedScreen(at: model.day)
-            .offset(x: dragOffset / 3)
+            .contentBackground()
+            .ignoresSafeArea(edges: .top)
             .gesture(daySwipe)
-            .safeAreaInset(edge: .bottom) { addButton }
-            .navigationTitle("")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) { title }
-                ToolbarItemGroup(placement: .topBarTrailing) {
+            .refreshable { environment.syncNow() }
+
+            addButton
+        }
+        .sheet(item: $editing) { mode in
+            TaskEditorView(environment: environment, mode: mode, day: model.day)
+        }
+        .task { model.onAppear() }
+        .onDisappear { model.onDisappear() }
+    }
+
+    // MARK: Header
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(model.day.formatted(.dateTime.weekday(.wide)))
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.8))
+                    Text(model.day.formatted(.dateTime.day().month(.wide)))
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                }
+
+                Spacer()
+
+                HStack(spacing: 14) {
                     SyncIndicator(status: environment.status)
                     CategoryFilterMenu(
                         categories: Array(model.categories.values).sorted { $0.name < $1.name },
                         selection: $model.categoryFilter
                     )
                 }
+                .foregroundStyle(.white)
+                .padding(.top, 4)
             }
-            .sheet(item: $editing) { mode in
-                TaskEditorView(environment: environment, mode: mode, day: model.day)
+
+            WeekStrip(selected: $model.day)
+
+            if let next = model.nextTask {
+                NextUpCard(task: next, category: next.categoryID.flatMap { model.categories[$0] })
+                    .onTapGesture { editing = .editing(next) }
+                    .transition(.scale(scale: 0.96).combined(with: .opacity))
             }
-            .refreshable { environment.syncNow() }
-            .task { model.onAppear() }
-            .onDisappear { model.onDisappear() }
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 62)
+        .padding(.bottom, 20)
+        .background(Theme.HeaderBackground(at: model.day))
+        .clipShape(
+            UnevenRoundedRectangle(
+                bottomLeadingRadius: 30, bottomTrailingRadius: 30, style: .continuous
+            )
+        )
+    }
+
+    // MARK: Замены
+
+    /// Правки, которые проиграли чужим. Над списком, а не в настройках: их
+    /// показывают один раз, и если промотать мимо — их больше негде увидеть.
+    @ViewBuilder
+    private var notices: some View {
+        if !model.notices.isEmpty {
+            VStack(spacing: 8) {
+                ForEach(model.notices) { notice in
+                    SupersededEditRow(
+                        notice: notice,
+                        onRestore: { withAnimation(.snappy) { model.restore(notice) } },
+                        onDismiss: { withAnimation(.snappy) { model.dismiss(notice) } }
+                    )
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
         }
     }
 
-    // MARK: Pieces
+    // MARK: Timeline
 
-    private var title: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(model.day.formatted(.dateTime.day().month(.wide)))
-                .font(.title3.weight(.semibold))
-            Text(subtitle)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+    private enum Row: Identifiable {
+        case now
+        case task(CalendarTask)
+
+        var id: String {
+            switch self {
+            case .now: "now"
+            case .task(let task): task.id.uuidString
+            }
         }
     }
 
-    private var subtitle: String {
-        if Calendar.current.isDateInToday(model.day) {
-            return model.unfinishedCount == 0
-                ? "сегодня — всё сделано"
-                : "сегодня · " + plural(model.unfinishedCount, "дело", "дела", "дел")
-        }
-        return model.day.formatted(.dateTime.weekday(.wide))
+    /// The day's tasks, with the present moment slotted into its place.
+    private var rows: [Row] {
+        let tasks = model.visibleTasks
+        guard Calendar.current.isDateInToday(model.day) else { return tasks.map(Row.task) }
+
+        let now = Date()
+        let passed = tasks.prefix { task in (task.startsAt ?? .distantPast) <= now }
+        var rows = passed.map(Row.task)
+        rows.append(.now)
+        rows.append(contentsOf: tasks.dropFirst(passed.count).map(Row.task))
+        return rows
     }
 
     @ViewBuilder
-    private var dayContent: some View {
+    private var timeline: some View {
         if model.visibleTasks.isEmpty {
-            VStack(spacing: 6) {
-                Image(systemName: "sun.horizon")
-                    .font(.largeTitle)
-                    .foregroundStyle(.secondary)
-                Text("Ничего не запланировано")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 40)
-            .card()
+            EmptyDay()
+                .padding(.horizontal, 16)
+                .padding(.top, 40)
         } else {
-            let next = model.nextTask
-            ForEach(model.visibleTasks) { task in
-                TaskCard(
-                    task: task,
-                    category: task.categoryID.flatMap { model.categories[$0] },
-                    isNext: task.id == next?.id,
-                    onToggle: { model.toggleCompleted(task) }
-                )
-                .card(emphasised: task.id == next?.id)
-                .contentShape(Rectangle())
-                .onTapGesture { editing = .editing(task) }
-                .contextMenu {
-                    Button(role: .destructive) {
-                        model.delete(task)
-                    } label: {
-                        Label("Удалить", systemImage: "trash")
+            LazyVStack(spacing: 0) {
+                ForEach(rows) { row in
+                    switch row {
+                    case .now:
+                        NowMarker()
+                    case .task(let task):
+                        TimelineRow(
+                            task: task,
+                            category: task.categoryID.flatMap { model.categories[$0] },
+                            onToggle: { withAnimation(.snappy) { model.toggleCompleted(task) } }
+                        )
+                        .onTapGesture { editing = .editing(task) }
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                withAnimation(.snappy) { model.delete(task) }
+                            } label: {
+                                Label("Удалить", systemImage: "trash")
+                            }
+                        }
                     }
                 }
-                .transition(.opacity.combined(with: .scale(scale: 0.97)))
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 18)
         }
     }
+
+    // MARK: Chrome
 
     private var addButton: some View {
         Button {
             editing = .creating
         } label: {
-            Label("Добавить", systemImage: "plus")
-                .font(.headline)
-                .padding(.horizontal, 22)
-                .padding(.vertical, 13)
-                .background(.regularMaterial, in: Capsule())
-                .overlay(Capsule().stroke(.white.opacity(0.3), lineWidth: 0.8))
-                .shadow(color: .black.opacity(0.15), radius: 10, y: 4)
+            Image(systemName: "plus")
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 58, height: 58)
+                .background { Theme.HeaderBackground(at: model.day).clipShape(Circle()) }
+                .shadow(color: .black.opacity(0.25), radius: 12, y: 5)
         }
-        .padding(.bottom, 8)
+        .padding(.bottom, 12)
     }
 
     /// A day either side, because that is how a person flicks through a week.
     private var daySwipe: some Gesture {
-        DragGesture(minimumDistance: 24)
-            .onChanged { value in
-                guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                dragOffset = value.translation.width
-            }
+        DragGesture(minimumDistance: 30)
             .onEnded { value in
+                guard abs(value.translation.width) > abs(value.translation.height) * 1.5 else {
+                    return
+                }
                 let step = value.translation.width < -60 ? 1 : (value.translation.width > 60 ? -1 : 0)
+                guard step != 0 else { return }
                 withAnimation(.snappy) {
-                    dragOffset = 0
-                    if step != 0 {
-                        model.day = Calendar.current.date(
-                            byAdding: .day, value: step, to: model.day
-                        ) ?? model.day
-                    }
+                    model.day = Calendar.current.date(
+                        byAdding: .day, value: step, to: model.day
+                    ) ?? model.day
                 }
             }
     }
 }
 
-/// The week, so moving a few days is one tap rather than several swipes.
+// MARK: - Pieces
+
+/// The week, in the header, so moving a few days is one tap.
 struct WeekStrip: View {
     @Binding var selected: Date
     private let calendar = Calendar.current
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 4) {
             ForEach(days, id: \.self) { day in
                 let isSelected = calendar.isDate(day, inSameDayAs: selected)
                 let isToday = calendar.isDateInToday(day)
@@ -179,24 +220,21 @@ struct WeekStrip: View {
                 Button {
                     withAnimation(.snappy) { selected = day }
                 } label: {
-                    VStack(spacing: 3) {
+                    VStack(spacing: 2) {
                         Text(day.formatted(.dateTime.weekday(.abbreviated)))
-                            .font(.caption2)
-                            .textCase(.lowercase)
-                            .foregroundStyle(.secondary)
+                            .font(.system(size: 11, weight: .medium))
                         Text(day.formatted(.dateTime.day()))
-                            .font(.subheadline.weight(isSelected ? .bold : .regular))
+                            .font(.system(size: 16, weight: .semibold, design: .rounded))
                             .monospacedDigit()
                     }
+                    .foregroundStyle(isSelected ? Color(hex: "#20243A") : .white.opacity(0.9))
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, 7)
                     .background {
                         if isSelected {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(.regularMaterial)
+                            Capsule().fill(.white)
                         } else if isToday {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(.primary.opacity(0.25), lineWidth: 1)
+                            Capsule().stroke(.white.opacity(0.55), lineWidth: 1.2)
                         }
                     }
                 }
@@ -205,110 +243,175 @@ struct WeekStrip: View {
         }
     }
 
-    /// The week the chosen day falls in.
     private var days: [Date] {
         guard let week = calendar.dateInterval(of: .weekOfYear, for: selected) else { return [] }
         return (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: week.start) }
     }
 }
 
-/// One task.
-struct TaskCard: View {
+/// The next thing due, on the header, where the eye lands first.
+struct NextUpCard: View {
     let task: CalendarTask
     let category: TaskCategory?
-    let isNext: Bool
-    let onToggle: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            Button(action: onToggle) {
-                Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
-                    .font(isNext ? .title2 : .title3)
-                    .foregroundStyle(task.isCompleted ? .green : accent)
-                    .symbolEffect(.bounce, value: task.isCompleted)
-            }
-            .buttonStyle(.plain)
+        HStack(alignment: .center, spacing: 12) {
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(category.map { Color(hex: $0.colorHex) } ?? Theme.unlabelled)
+                .frame(width: 5, height: 40)
 
             VStack(alignment: .leading, spacing: 3) {
+                Text("Дальше")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
                 Text(task.title)
-                    .font(isNext ? .headline : .body)
-                    .strikethrough(task.isCompleted)
-                    .foregroundStyle(task.isCompleted ? .secondary : .primary)
-                    .lineLimit(2)
-
-                HStack(spacing: 8) {
-                    if let place = task.locationName, !place.isEmpty {
-                        Label(place, systemImage: travelSymbol)
-                            .labelStyle(.titleAndIcon)
-                    }
-                    if let category {
-                        Text(category.name)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 2)
-                            .background(Color(hex: category.colorHex).opacity(0.25), in: Capsule())
-                    }
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            }
-
-            Spacer(minLength: 4)
-
-            VStack(alignment: .trailing, spacing: 2) {
+                    .font(.headline)
+                    .lineLimit(1)
                 if let startsAt = task.startsAt {
-                    Text(startsAt, style: .time)
-                        .font((isNext ? Font.title3 : Font.subheadline).weight(.medium))
-                        .monospacedDigit()
-                    if isNext && !task.isCompleted {
-                        Text(startsAt, style: .relative)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                } else if task.isAllDay {
-                    Text("весь день")
+                    Text(startsAt, style: .relative)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
-        }
-        .overlay(alignment: .leading) {
-            if let category {
-                Capsule()
-                    .fill(Color(hex: category.colorHex))
-                    .frame(width: 3)
-                    .offset(x: -Theme.cardPadding + 4)
+
+            Spacer(minLength: 4)
+
+            if let startsAt = task.startsAt {
+                Text(startsAt, style: .time)
+                    .font(.system(size: 24, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
             }
         }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color(.systemBackground))
+        )
+        .shadow(color: .black.opacity(0.22), radius: 14, y: 6)
     }
+}
 
-    private var accent: Color {
-        category.map { Color(hex: $0.colorHex) } ?? .accentColor
-    }
+/// One line of the timeline: the hour, the rule, the card.
+struct TimelineRow: View {
+    let task: CalendarTask
+    let category: TaskCategory?
+    let onToggle: () -> Void
 
-    private var travelSymbol: String {
-        switch task.travelMode {
-        case .none: "mappin"
-        case .walking: "figure.walk"
-        case .driving: "car.fill"
-        case .transit: "tram.fill"
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(spacing: 4) {
+                Text(timeLabel)
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(task.isCompleted ? .tertiary : .secondary)
+                Rectangle()
+                    .fill(Color(.separator))
+                    .frame(width: 1)
+                    .frame(maxHeight: .infinity)
+            }
+            .frame(width: 46)
+
+            card.padding(.bottom, 12)
         }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var card: some View {
+        HStack(spacing: 12) {
+            Button(action: onToggle) {
+                Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(task.isCompleted ? .green : tint)
+                    .symbolEffect(.bounce, value: task.isCompleted)
+            }
+            .buttonStyle(.plain)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(task.title)
+                    .font(.body.weight(.medium))
+                    .strikethrough(task.isCompleted)
+                    .foregroundStyle(task.isCompleted ? .secondary : .primary)
+                    .lineLimit(2)
+
+                if !details.isEmpty {
+                    HStack(spacing: 6) {
+                        ForEach(details, id: \.self) { detail in
+                            Text(detail)
+                                .font(.caption)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 2)
+                                .background(tint.opacity(0.16), in: Capsule())
+                                .foregroundStyle(tint)
+                        }
+                    }
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .card(tint: tint)
+        .opacity(task.isCompleted ? 0.65 : 1)
+    }
+
+    private var tint: Color {
+        category.map { Color(hex: $0.colorHex) } ?? Theme.unlabelled
+    }
+
+    private var details: [String] {
+        var parts: [String] = []
+        if let category { parts.append(category.name) }
+        if let place = task.locationName, !place.isEmpty { parts.append(place) }
+        return parts
+    }
+
+    private var timeLabel: String {
+        guard let startsAt = task.startsAt else { return task.isAllDay ? "весь\nдень" : "—" }
+        return startsAt.formatted(date: .omitted, time: .shortened)
+    }
+}
+
+/// Where the day has got to.
+struct NowMarker: View {
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(Date(), style: .time)
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(.red)
+                .frame(width: 46)
+
+            Circle().fill(.red).frame(width: 7, height: 7)
+            Rectangle().fill(.red.opacity(0.55)).frame(height: 1.5)
+        }
+        .padding(.bottom, 12)
+    }
+}
+
+struct EmptyDay: View {
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "checkmark.seal")
+                .font(.system(size: 36))
+                .foregroundStyle(.tertiary)
+            Text("Ничего не запланировано")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 44)
+        .card()
     }
 }
 
 /// The only thing the interface says about the network.
-///
-/// Not an error, not an alert. Network failures are handled in the background;
-/// the person sees a small mark meaning "this has not reached the other phone
-/// yet" and carries on, because what is in front of them is the truth either way.
 struct SyncIndicator: View {
     let status: SyncStatus
 
     var body: some View {
         if status.hasUnsyncedChanges {
             Image(systemName: "arrow.triangle.2.circlepath")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 15, weight: .semibold))
                 .accessibilityLabel(
                     plural(status.pendingChanges, "изменение", "изменения", "изменений")
                         + " не отправлено"
@@ -342,6 +445,7 @@ struct CategoryFilterMenu: View {
                     ? "line.3.horizontal.decrease.circle"
                     : "line.3.horizontal.decrease.circle.fill"
             )
+            .font(.system(size: 17, weight: .semibold))
         }
         .disabled(categories.isEmpty)
     }

@@ -3,30 +3,52 @@ import SwiftUI
 
 /// Четыре вкладки, потому что дел всего четыре.
 public struct RootView: View {
+    @State private var tab: Tab = .day
     private let environment: AppEnvironment
 
     public init(environment: AppEnvironment) {
         self.environment = environment
     }
 
+    enum Tab: Hashable {
+        case day, shopping, feed, settings
+    }
+
     public var body: some View {
-        TabView {
+        TabView(selection: $tab) {
             DayView(environment: environment)
                 .tabItem { Label("День", systemImage: "calendar") }
+                .tag(Tab.day)
 
             ShoppingListView(environment: environment)
                 .tabItem { Label("Покупки", systemImage: "cart") }
+                .tag(Tab.shopping)
 
             ActivityFeedView(environment: environment)
                 .tabItem { Label("Изменения", systemImage: "clock.arrow.circlepath") }
+                .tag(Tab.feed)
 
             SettingsView(environment: environment)
                 .tabItem { Label("Настройки", systemImage: "gearshape") }
+                .tag(Tab.settings)
+        }
+        // Панель внизу перекрашивается под открытую вкладку — тот же цвет, что
+        // и шапка над ней, поэтому экран читается как один предмет, а не как
+        // цветная картинка со стандартной планкой под ней.
+        .tint(tint)
+    }
+
+    private var tint: Color {
+        switch tab {
+        case .day: Theme.Hour.at(Date()).gradient.from
+        case .shopping: Theme.shoppingGradient.from
+        case .feed: Theme.feedGradient.to
+        case .settings: Theme.settingsGradient.to
         }
     }
 }
 
-/// Категории, шаблоны сборов и код приглашения, который нужно продиктовать.
+/// Категории, шаблоны сборов и то, насколько отстал второй телефон.
 public struct SettingsView: View {
     private let environment: AppEnvironment
 
@@ -37,69 +59,115 @@ public struct SettingsView: View {
     public var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 10) {
-                    NavigationLink {
-                        CategoriesView(environment: environment)
-                    } label: {
-                        row("Категории", systemImage: "tag")
-                    }
-                    .buttonStyle(.plain)
+                VStack(spacing: 0) {
+                    Theme.ScreenHeader("Настройки", gradient: Theme.settingsGradient)
 
-                    NavigationLink {
-                        PackingTemplatesView(environment: environment)
-                    } label: {
-                        row("Что взять с собой", systemImage: "bag")
-                    }
-                    .buttonStyle(.plain)
+                    VStack(alignment: .leading, spacing: 18) {
+                        VStack(spacing: 8) {
+                            SectionLabel("Что настраивать")
+                            NavigationLink {
+                                CategoriesView(environment: environment)
+                            } label: {
+                                row(
+                                    "Категории",
+                                    detail: "Цвет, по которому видно, чьё это дело",
+                                    systemImage: "tag.fill",
+                                    tint: Theme.swatchColor(0)
+                                )
+                            }
+                            .buttonStyle(.plain)
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        LabeledContent("Не отправлено") {
-                            Text("\(environment.status.pendingChanges)").monospacedDigit()
+                            NavigationLink {
+                                PackingTemplatesView(environment: environment)
+                            } label: {
+                                row(
+                                    "Что взять с собой",
+                                    detail: "Списки, которые подставляются в задачу",
+                                    systemImage: "bag.fill",
+                                    tint: Theme.swatchColor(5)
+                                )
+                            }
+                            .buttonStyle(.plain)
                         }
-                        if let lastSynced = environment.status.lastSyncedAt {
-                            LabeledContent("Синхронизация") {
-                                Text(lastSynced, format: .relative(presentation: .named))
+
+                        VStack(spacing: 8) {
+                            SectionLabel("Второй телефон")
+                            syncCard
+                            if !AppDatabase.isSharedWithWidget {
+                                widgetWarning
                             }
                         }
-                        Text("Всё работает без сети. Это только про то, насколько отстал второй телефон.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
                     }
-                    .card()
-
-                    if !AppDatabase.isSharedWithWidget {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Label("Виджет не видит эти данные", systemImage: "exclamationmark.triangle")
-                                .font(.subheadline)
-                                .foregroundStyle(.orange)
-                            Text("""
-                                App Group выключен, поэтому база лежит в контейнере \
-                                приложения. Здесь работает всё; виджету просто неоткуда \
-                                читать.
-                                """)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        .card()
-                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 20)
+                    .padding(.bottom, 28)
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 24)
             }
-            .themedScreen()
-            .navigationTitle("Настройки")
-            .navigationBarTitleDisplayMode(.inline)
+            .headeredScreen()
         }
     }
 
-    private func row(_ title: String, systemImage: String) -> some View {
-        HStack {
-            Label(title, systemImage: systemImage)
-            Spacer()
-            Image(systemName: "chevron.right")
+    private var syncCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            LabeledContent("Не отправлено") {
+                Text("\(environment.status.pendingChanges)")
+                    .monospacedDigit()
+                    .fontWeight(.semibold)
+            }
+            if let lastSynced = environment.status.lastSyncedAt {
+                LabeledContent("Синхронизация") {
+                    Text(lastSynced, format: .relative(presentation: .named))
+                }
+            }
+            Divider()
+            Text("Всё работает без сети. Это только про то, насколько отстал второй телефон.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .card()
+        .font(.subheadline)
+        .card(tint: environment.status.hasUnsyncedChanges ? Theme.swatchColor(1) : Theme.swatchColor(3))
+    }
+
+    private var widgetWarning: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Виджет не видит эти данные", systemImage: "exclamationmark.triangle.fill")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(Theme.swatchColor(1))
+            Text("""
+                App Group выключен, поэтому база лежит в контейнере \
+                приложения. Здесь работает всё; виджету просто неоткуда \
+                читать.
+                """)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .card(tint: Theme.swatchColor(1))
+    }
+
+    private func row(
+        _ title: String, detail: String, systemImage: String, tint: Color
+    ) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 32, height: 32)
+                .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(tint))
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.body.weight(.medium))
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tertiary)
+        }
+        .card(tint: tint)
     }
 }

@@ -52,17 +52,7 @@ public struct TaskEditorView: View {
                 }
 
                 Section("Категория") {
-                    Picker("Категория", selection: $model.categoryID) {
-                        Text("Без категории").tag(UUID?.none)
-                        ForEach(model.categories) { category in
-                            Label {
-                                Text(category.name)
-                            } icon: {
-                                Circle().fill(Color(hex: category.colorHex)).frame(width: 10)
-                            }
-                            .tag(UUID?.some(category.id))
-                        }
-                    }
+                    categoryChips
                 }
 
                 if model.isEditing {
@@ -92,6 +82,59 @@ public struct TaskEditorView: View {
             .task { model.onAppear() }
             .onDisappear { model.onDisappear() }
         }
+    }
+
+    /// Категории — плашками, а не выпадающим списком.
+    ///
+    /// Цвет категории виден на каждой карточке в дне, и выбирают его именно по
+    /// цвету; в `Picker` он свёрнут в одну строку и до раскрытия его не видно.
+    private var categoryChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                chip(
+                    title: "Без категории",
+                    colour: Theme.unlabelled,
+                    isSelected: model.categoryID == nil
+                ) {
+                    model.categoryID = nil
+                }
+
+                ForEach(model.categories) { category in
+                    chip(
+                        title: category.name,
+                        colour: Color(hex: category.colorHex),
+                        isSelected: model.categoryID == category.id
+                    ) {
+                        model.categoryID = category.id
+                    }
+                }
+            }
+            .padding(.vertical, 2)
+        }
+        .scrollClipDisabled()
+    }
+
+    private func chip(
+        title: String, colour: Color, isSelected: Bool, select: @escaping () -> Void
+    ) -> some View {
+        Button {
+            withAnimation(.snappy) { select() }
+        } label: {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(isSelected ? Color.white : colour)
+                    .frame(width: 9, height: 9)
+                Text(title)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(isSelected ? Color.white : .primary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(
+                Capsule().fill(isSelected ? colour : Color(.tertiarySystemFill))
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     /// Subtasks, which double as the "what to bring" list.

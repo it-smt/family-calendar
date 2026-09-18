@@ -17,95 +17,149 @@ public struct ShoppingListView: View {
     }
 
     public var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 10) {
-                    HStack(spacing: 10) {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.title3)
-                            .foregroundStyle(.secondary)
-                        TextField("Что купить", text: $draft)
-                            .focused($addingFocused)
-                            .onSubmit(add)
-                            .submitLabel(.done)
-                    }
-                    .card(emphasised: true)
-
-                    if items.isEmpty {
-                        Text("Список пуст")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 36)
-                            .card()
-                    }
-
-                    ForEach(items) { item in
-                        Button {
-                            withAnimation(.snappy) {
-                                try? environment.shopping.setBought(item, !item.isBought)
-                            }
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: item.isBought ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(item.isBought ? .green : .secondary)
-                                    .symbolEffect(.bounce, value: item.isBought)
-                                Text(item.title)
-                                    .strikethrough(item.isBought)
-                                    .foregroundStyle(item.isBought ? .secondary : .primary)
-                                Spacer()
-                                if let quantity = item.quantity, !quantity.isEmpty {
-                                    Text(quantity)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .card()
-                        .contextMenu {
-                            Button(role: .destructive) {
-                                try? environment.shopping.delete(item)
-                            } label: {
-                                Label("Удалить", systemImage: "trash")
-                            }
-                        }
-                        .transition(.opacity.combined(with: .scale(scale: 0.97)))
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 24)
+        ScrollView {
+            VStack(spacing: 0) {
+                header
+                list
             }
-            .themedScreen()
-            .navigationTitle("Покупки")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    SyncIndicator(status: environment.status)
+        }
+        .headeredScreen()
+        .task {
+            guard observation == nil else { return }
+            observation = Task {
+                do {
+                    for try await value in environment.shopping.observe() {
+                        withAnimation(.snappy) { items = value }
+                    }
+                } catch {
+                    Log.database.error("shopping observation ended: \(error.localizedDescription, privacy: .public)")
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Убрать купленное") {
+            }
+        }
+        .onDisappear {
+            observation?.cancel()
+            observation = nil
+        }
+    }
+
+    // MARK: Header
+
+    private var header: some View {
+        VStack(spacing: 16) {
+            Theme.ScreenHeader("Покупки", subtitle: subtitle, gradient: Theme.shoppingGradient) {
+                SyncIndicator(status: environment.status)
+                if items.contains(where: \.isBought) {
+                    Button {
                         withAnimation(.snappy) { try? environment.shopping.clearBought() }
+                    } label: {
+                        Image(systemName: "checklist.checked")
+                            .font(.system(size: 17, weight: .semibold))
                     }
-                    .font(.caption)
-                    .disabled(!items.contains(where: \.isBought))
+                    .accessibilityLabel("Убрать купленное")
                 }
             }
-            .task {
-                guard observation == nil else { return }
-                observation = Task {
-                    do {
-                        for try await value in environment.shopping.observe() {
-                            withAnimation(.snappy) { items = value }
-                        }
-                    } catch {
-                        Log.database.error("shopping observation ended: \(error.localizedDescription, privacy: .public)")
-                    }
+
+            // Поле на цветной шапке, а не под ней: это то, ради чего экран
+            // открывают, и промахнуться по нему нельзя.
+            addField
+                .padding(.horizontal, 16)
+                .offset(y: -34)
+                .padding(.bottom, -34)
+        }
+    }
+
+    private var addField: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "plus")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 30, height: 30)
+                .background(Circle().fill(Theme.shoppingGradient.from))
+            TextField("Что купить", text: $draft)
+                .focused($addingFocused)
+                .onSubmit(add)
+                .submitLabel(.done)
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color(.systemBackground))
+        )
+        .shadow(color: .black.opacity(0.20), radius: 14, y: 6)
+    }
+
+    private var subtitle: String {
+        let left = items.filter { !$0.isBought }.count
+        return left == 0
+            ? (items.isEmpty ? "Список пуст" : "Всё куплено")
+            : plural(left, "пункт", "пункта", "пунктов")
+    }
+
+    // MARK: Список
+
+    @ViewBuilder
+    private var list: some View {
+        LazyVStack(spacing: 8) {
+            ForEach(items) { item in
+                row(item)
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+            }
+
+            if items.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "cart")
+                        .font(.system(size: 34))
+                        .foregroundStyle(.tertiary)
+                    Text("Что нужно — сюда")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    Text("Второй телефон увидит, когда поймает сеть")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 40)
+                .card()
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 24)
+        .padding(.bottom, 28)
+    }
+
+    private func row(_ item: ShoppingItem) -> some View {
+        Button {
+            withAnimation(.snappy) {
+                try? environment.shopping.setBought(item, !item.isBought)
+            }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: item.isBought ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(item.isBought ? Theme.shoppingGradient.to : .secondary)
+                    .symbolEffect(.bounce, value: item.isBought)
+                Text(item.title)
+                    .strikethrough(item.isBought)
+                    .foregroundStyle(item.isBought ? .secondary : .primary)
+                Spacer(minLength: 0)
+                if let quantity = item.quantity, !quantity.isEmpty {
+                    Text(quantity)
+                        .font(.caption.weight(.medium))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Theme.shoppingGradient.to.opacity(0.16), in: Capsule())
+                        .foregroundStyle(Theme.shoppingGradient.from)
                 }
             }
-            .onDisappear {
-                observation?.cancel()
-                observation = nil
+        }
+        .buttonStyle(.plain)
+        .card(tint: item.isBought ? nil : Theme.shoppingGradient.to)
+        .opacity(item.isBought ? 0.6 : 1)
+        .contextMenu {
+            Button(role: .destructive) {
+                try? environment.shopping.delete(item)
+            } label: {
+                Label("Удалить", systemImage: "trash")
             }
         }
     }

@@ -48,9 +48,15 @@ public struct AppRootView: View {
     private var content: some View {
         switch state {
         case .loading:
-            ProgressView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .themedScreen()
+            // Тот же цвет, что и у экрана входа, и у шапки дня за ним: между
+            // запуском и календарём не должно быть белой вспышки.
+            ZStack {
+                Theme.HeaderBackground(Theme.Hour.at(Date()).gradient)
+                    .ignoresSafeArea()
+                ProgressView()
+                    .controlSize(.large)
+                    .tint(.white)
+            }
         case .signedOut(let database, let credentials):
             SignInView(database: database, credentials: credentials) { environment in
                 begin(with: environment, credentials: credentials)
@@ -63,6 +69,7 @@ public struct AppRootView: View {
                 systemImage: "xmark.octagon",
                 description: Text(message)
             )
+            .contentBackground()
         }
     }
 
