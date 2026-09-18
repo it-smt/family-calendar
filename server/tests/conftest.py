@@ -85,10 +85,13 @@ class Family:
     bob_id: uuid.UUID
 
     def headers(self, user_id: uuid.UUID | None = None) -> dict[str, str]:
-        return {
-            "X-Household-Id": str(self.household_id),
-            "X-User-Id": str(user_id or self.alice_id),
-        }
+        """A real signed token, so the sync tests exercise the real auth path."""
+        from app.auth.tokens import Identity, issue_token
+
+        token, _ = issue_token(
+            Identity(household_id=self.household_id, user_id=user_id or self.alice_id)
+        )
+        return {"Authorization": f"Bearer {token}"}
 
 
 async def _seed_family(engine: AsyncEngine) -> Family:

@@ -139,7 +139,7 @@ def _action(pre: dict[str, Any] | None, row) -> str:
     return "updated"
 
 
-async def _record_changes(
+async def record_changes(
     session: AsyncSession,
     household_id: uuid.UUID,
     entries: list[tuple[str, uuid.UUID, dict[str, Any]]],
@@ -268,7 +268,7 @@ async def apply_push(
 
     log_entries.extend(await _log_activity(session, household_id, user_id, activity_events))
 
-    seqs = await _record_changes(session, household_id, log_entries)
+    seqs = await record_changes(session, household_id, log_entries)
     # `log_entries` holds the applied rows first, in order, then the feed
     # entries, so the leading sequence numbers are the ones the device asked for.
     for applied_change, seq in zip(result.applied, seqs, strict=False):

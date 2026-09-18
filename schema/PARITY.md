@@ -21,6 +21,7 @@ The two sources of truth for the schema itself:
 |---|---|
 | `dirty` exists only on the device | It is the outbox flag: the row has not reached the server yet. The server has nothing to do with it. |
 | `change_log` exists only on the server | It is where the pull cursor comes from. |
+| `credentials` exists only on the server | The `users` table is copied to every device; an email and a password hash must not ride along with it. |
 | `sync_state` exists only on the device | One row, holding the cursor the device has reached. Never pushed. |
 | Enums are native types on the server, `TEXT` + `CHECK` on the device | Same string values on both sides. |
 | The server has no CHECK constraints | A constraint the client can violate would reject a push the device has already committed locally, and the device would retry it forever. Cross-field rules belong on the device, before the row is written. |

@@ -1,31 +1,43 @@
 """Who is calling.
 
-A placeholder until stage 3 replaces it with JWT. It is not authentication and
-does not pretend to be: anyone who can reach the server can claim any identity.
-The endpoints take the identity through this one dependency, so swapping in real
-tokens does not touch them.
+The identity comes from a signed token and nothing else — no header a caller
+can simply assert. `Identity` keeps the shape the sync endpoints already use,
+so replacing the stage 2 placeholder touched nothing in `app/api/sync.py`.
 """
 
 from __future__ import annotations
 
-import uuid
-from dataclasses import dataclass
 from typing import Annotated
 
-from fastapi import Depends, Header
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from app.auth.tokens import Identity, InvalidToken, decode_token
 
-@dataclass(frozen=True)
-class Identity:
-    household_id: uuid.UUID
-    user_id: uuid.UUID
+bearer_scheme = HTTPBearer(auto_error=False, description="Access token from /auth")
+
+UNAUTHORIZED = HTTPException(
+    status_code=401,
+    detail={"error": "not_authenticated"},
+    headers={"WWW-Authenticate": "Bearer"},
+)
 
 
 async def current_identity(
-    x_household_id: Annotated[uuid.UUID, Header()],
-    x_user_id: Annotated[uuid.UUID, Header()],
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
 ) -> Identity:
-    return Identity(household_id=x_household_id, user_id=x_user_id)
+    if credentials is None or not credentials.credentials:
+        raise UNAUTHORIZED
+    try:
+        return decode_token(credentials.credentials)
+    except InvalidToken as error:
+        raise HTTPException(
+            status_code=401,
+            detail={"error": "invalid_token", "reason": str(error)},
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from error
 
 
 CurrentIdentity = Annotated[Identity, Depends(current_identity)]
+
+__all__ = ["CurrentIdentity", "Identity", "current_identity"]

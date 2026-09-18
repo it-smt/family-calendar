@@ -27,7 +27,9 @@ CLIENT_MODELS = CLIENT_SOURCES / "Models"
 # The device carries an outbox flag; the server has no use for one.
 CLIENT_ONLY_COLUMNS = {"dirty"}
 # The cursor source lives only on the server, the cursor value only on the device.
-SERVER_ONLY_TABLES = {"change_log", "alembic_version"}
+# Credentials never reach a device: an email and a password hash copied onto
+# both phones, and into every change payload, would be a schema mistake.
+SERVER_ONLY_TABLES = {"change_log", "alembic_version", "credentials"}
 CLIENT_ONLY_TABLES = {"sync_state"}
 
 # How a Postgres type has to be spelled in SQLite for a value to survive the
