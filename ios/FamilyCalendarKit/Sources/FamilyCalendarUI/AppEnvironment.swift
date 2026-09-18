@@ -114,7 +114,7 @@ public final class AppEnvironment {
     public func start() {
         monitor.start { [engine] in Task { await engine.schedule() } }
 
-        Task { [engine, notifications] in
+        Task { [engine, notifications, currentUserID] in
             await notifications.requestAuthorization()
 
             // A sync that changed anything invalidates the schedule: an alert
@@ -138,7 +138,7 @@ public final class AppEnvironment {
     }
 
     public func syncNow() {
-        Task { await engine.schedule() }
+        Task { [engine] in await engine.schedule() }
     }
 
     /// A background push woke us. Pull, then put the alerts right.
