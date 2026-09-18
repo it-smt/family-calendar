@@ -47,6 +47,10 @@ public final class AppDatabase: Sendable {
         // Deferred checks let a batch of rows arrive in any order inside one
         // transaction, which is how both a sync pull and an outbox write land.
         configuration.foreignKeysEnabled = true
+        // The widget and the app open the same file from the App Group. An
+        // extension still holding a database lock when the system suspends it
+        // is killed outright (0xdead10cc); this makes GRDB let go in time.
+        configuration.observesSuspensionNotifications = true
         return configuration
     }
 

@@ -1,6 +1,7 @@
 import Foundation
 import FamilyCalendarKit
 import SwiftUI
+import WidgetKit
 
 /// Wires the layers together once, at launch.
 ///
@@ -52,6 +53,9 @@ public final class AppEnvironment {
         // Every local write asks for a sync and reschedules the alerts, then
         // returns. Neither waits for anything.
         let requestSync: @Sendable () -> Void = {
+            // The widget reads the same file, so it is already right — but it
+            // is a separate process and has to be told to look again.
+            WidgetCenter.shared.reloadAllTimelines()
             Task {
                 await notifications.rescheduleAll()
                 await engine.schedule()
@@ -88,6 +92,7 @@ public final class AppEnvironment {
             await engine.onChangesApplied {
                 await notifications.rescheduleAll()
                 await notifications.notifyAboutReplacedEdits()
+                WidgetCenter.shared.reloadAllTimelines()
             }
 
             await notifications.rescheduleAll()
