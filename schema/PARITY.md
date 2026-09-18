@@ -22,6 +22,7 @@ The two sources of truth for the schema itself:
 | `dirty` exists only on the device | It is the outbox flag: the row has not reached the server yet. The server has nothing to do with it. |
 | `change_log` exists only on the server | It is where the pull cursor comes from. |
 | `credentials` exists only on the server | The `users` table is copied to every device; an email and a password hash must not ride along with it. |
+| `devices` exists only on the server | A push token belongs to one device. Travelling through a shared row would let the other phone overwrite it. |
 | `sync_state` exists only on the device | One row, holding the cursor the device has reached. Never pushed. |
 | `superseded_edits` exists only on the device | An edit of this person's that an arriving row replaced, kept so the loss is not silent. |
 | `route_cache` exists only on the device | A route is measured from where *this* phone is; the other phone is somewhere else. |

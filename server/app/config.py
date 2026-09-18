@@ -22,5 +22,18 @@ class Settings(BaseSettings):
     #: offline turns a sync into a login prompt at the worst possible moment.
     jwt_ttl_days: int = 365
 
+    # --- Push notifications -------------------------------------------------
+    #
+    # All optional. With none of it set the server simply does not wake the
+    # other phone, and everything still synchronises on launch, on foreground
+    # and on the network coming back.
+    apns_key_id: str = ""
+    apns_team_id: str = ""
+    apns_topic: str = ""
+    #: The .p8 key, either inline or as a path to it.
+    apns_private_key: str = ""
+    apns_key_path: str = ""
+    apns_use_sandbox: bool = True
+
 
 settings = Settings()

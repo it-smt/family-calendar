@@ -7,8 +7,8 @@
 -- is chronological order. A value written any other way would silently sort
 -- wrong, which is why Timestamp.swift has only one writer.
 
-INSERT INTO users (display_name, color, apns_token, household_id, id, created_at, updated_at, updated_by, deleted_at, dirty)
-VALUES (:display_name, :color, :apns_token, :household_id, :id, :created_at, :updated_at, :updated_by, :deleted_at, 0)
+INSERT INTO users (display_name, color, household_id, id, created_at, updated_at, updated_by, deleted_at, dirty)
+VALUES (:display_name, :color, :household_id, :id, :created_at, :updated_at, :updated_by, :deleted_at, 0)
 ON CONFLICT(id) DO UPDATE SET
     display_name = CASE WHEN (excluded.updated_at, COALESCE(excluded.updated_by, ''))
         > (users.updated_at, COALESCE(users.updated_by, ''))
@@ -16,9 +16,6 @@ ON CONFLICT(id) DO UPDATE SET
     color = CASE WHEN (excluded.updated_at, COALESCE(excluded.updated_by, ''))
         > (users.updated_at, COALESCE(users.updated_by, ''))
         THEN excluded.color ELSE users.color END,
-    apns_token = CASE WHEN (excluded.updated_at, COALESCE(excluded.updated_by, ''))
-        > (users.updated_at, COALESCE(users.updated_by, ''))
-        THEN excluded.apns_token ELSE users.apns_token END,
     household_id = CASE WHEN (excluded.updated_at, COALESCE(excluded.updated_by, ''))
         > (users.updated_at, COALESCE(users.updated_by, ''))
         THEN excluded.household_id ELSE users.household_id END,

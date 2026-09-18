@@ -28,6 +28,10 @@ extension AppDatabase {
             try db.execute(sql: schemaSQL(named: "v4_activity_notified"))
         }
 
+        migrator.registerMigration("v5_drop_apns_token") { db in
+            try db.execute(sql: schemaSQL(named: "v5_drop_apns_token"))
+        }
+
         return migrator
     }
 

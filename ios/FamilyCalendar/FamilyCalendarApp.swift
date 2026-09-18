@@ -9,6 +9,7 @@ import SwiftUI
 /// entitlement, and point the target at ../FamilyCalendarKit.
 @main
 struct FamilyCalendarApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @State private var state: LaunchState = .loading
     @Environment(\.scenePhase) private var scenePhase
 
@@ -20,6 +21,10 @@ struct FamilyCalendarApp: App {
             case .signedOut(let database, let credentials):
                 SignInView(database: database, credentials: credentials) { environment in
                     environment.start()
+                    delegate.environment = environment
+                    delegate.pushRegistration = PushRegistration(
+                        api: SyncAPI(baseURL: Configuration.serverURL), credentials: credentials
+                    )
                     state = .ready(environment)
                 }
             case .ready(let environment):
@@ -69,6 +74,10 @@ struct FamilyCalendarApp: App {
                 currentUserID: session.userID
             )
             environment.start()
+            delegate.environment = environment
+            delegate.pushRegistration = PushRegistration(
+                api: SyncAPI(baseURL: Configuration.serverURL), credentials: credentials
+            )
             state = .ready(environment)
         } catch {
             state = .failed(error.localizedDescription)

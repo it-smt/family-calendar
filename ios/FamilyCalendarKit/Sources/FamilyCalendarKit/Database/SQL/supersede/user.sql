@@ -11,8 +11,8 @@ INSERT INTO superseded_edits (entity_type, entity_id, mine, theirs, actor_id, su
 SELECT
     'user',
     users.id,
-    json_object('display_name', users.display_name, 'color', users.color, 'apns_token', users.apns_token, 'deleted_at', users.deleted_at),
-    json_object('display_name', :display_name, 'color', :color, 'apns_token', :apns_token, 'deleted_at', :deleted_at),
+    json_object('display_name', users.display_name, 'color', users.color, 'deleted_at', users.deleted_at),
+    json_object('display_name', :display_name, 'color', :color, 'deleted_at', :deleted_at),
     :updated_by,
     :updated_at
 FROM users
@@ -26,5 +26,4 @@ WHERE users.id = :id
     -- And it actually changes something worth telling someone about.
     AND (users.display_name IS NOT :display_name
            OR users.color IS NOT :color
-           OR users.apns_token IS NOT :apns_token
            OR users.deleted_at IS NOT :deleted_at);

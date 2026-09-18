@@ -14,16 +14,18 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentIdentity
 from app.auth.invites import new_invite_code
 from app.auth.passwords import hash_password, verify_absent_user, verify_password
 from app.auth.tokens import Identity, issue_token
-from app.db.models import Credential, Household, User
+from app.db.models import Credential, Device, Household, User
 from app.db.session import get_session
 from app.schemas.auth import (
     AuthResponse,
+    DeviceRequest,
     JoinRequest,
     LoginRequest,
     MeResponse,
@@ -267,3 +269,38 @@ async def me(identity: CurrentIdentity, session: Session) -> MeResponse:
         email=row.email,
         invite_code=row.invite_code,
     )
+
+
+@router.post("/device", status_code=204)
+async def register_device(
+    body: DeviceRequest, identity: CurrentIdentity, session: Session
+) -> None:
+    """Records where to send a wake-up.
+
+    Idempotent by token: a device that re-registers the same token — which iOS
+    asks it to do on every launch — updates the row rather than piling up
+    duplicates. Registering again also clears a tombstone, because a reinstalled
+    app gets the old token back often enough to matter.
+    """
+    now = datetime.now(UTC)
+    async with session.begin():
+        await session.execute(
+            pg_insert(Device.__table__)
+            .values(
+                id=uuid.uuid4(),
+                user_id=identity.user_id,
+                token=body.token,
+                platform=body.platform,
+                created_at=now,
+                updated_at=now,
+            )
+            .on_conflict_do_update(
+                index_elements=[Device.__table__.c.token],
+                set_={
+                    "user_id": identity.user_id,
+                    "platform": body.platform,
+                    "updated_at": now,
+                    "unregistered_at": None,
+                },
+            )
+        )

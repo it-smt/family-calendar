@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +16,9 @@ from app.schemas.sync import ChangeOut, PullResponse, PushRequest, PushResponse
 from app.sync.apply import AppliedChange, apply_push, read_changes
 from app.sync.registry import WRITABLE_ENTITY_TYPES, spec_for
 from app.sync.schemas import validate_payload
+from app.push.apns import APNsClient
+from app.push.deps import get_push_client
+from app.push.wake import wake_household
 from app.sync.serialization import to_wire
 
 log = logging.getLogger("app.sync")
@@ -23,6 +26,7 @@ log = logging.getLogger("app.sync")
 router = APIRouter(prefix="/sync", tags=["sync"])
 
 Session = Annotated[AsyncSession, Depends(get_session)]
+PushClient = Annotated["APNsClient | None", Depends(get_push_client)]
 
 DEFAULT_PAGE = 500
 MAX_PAGE = 2000
@@ -57,6 +61,8 @@ async def push(
     request: PushRequest,
     identity: CurrentIdentity,
     session: Session,
+    background: BackgroundTasks,
+    push_client: PushClient,
 ) -> PushResponse:
     prepared: list[tuple[str, dict[str, Any]]] = []
 
@@ -118,6 +124,20 @@ async def push(
                 "hint": "push the rows this batch points at in the same batch",
             },
         ) from error
+
+    # Only when something actually changed. Waking the other phone over a
+    # no-op would have the two of them taking turns waking each other for
+    # nothing, the same way an advancing cursor would.
+    if result.applied:
+        # After the response, not before it: the push is finished the moment it
+        # is committed, and nothing the device is waiting for depends on Apple.
+        background.add_task(
+            wake_household,
+            session,
+            push_client,
+            identity.household_id,
+            identity.user_id,
+        )
 
     return PushResponse(
         applied=[_as_change_out(change) for change in result.applied],

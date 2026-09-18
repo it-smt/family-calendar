@@ -146,6 +146,25 @@ public struct SyncAPI: Sendable {
         )
     }
 
+    /// Tells the server where to send a background wake-up.
+    ///
+    /// iOS asks the app to do this on every launch, and the server is
+    /// idempotent by token, so there is nothing to remember here.
+    public func registerDevice(token: String, platform: String = "ios", accessToken: String) async throws {
+        var request = URLRequest(url: baseURL.appendingPathComponent("auth/device"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONEncoder().encode(["token": token, "platform": platform])
+
+        let (data, response) = try await session.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status) else {
+            if status == 401 || status == 403 { throw Failure.unauthorized }
+            throw Failure.rejected(status: status, body: String(decoding: data, as: UTF8.self))
+        }
+    }
+
     private func post<Response: Decodable>(
         _ path: String, body: [String: String]
     ) async throws -> Response {

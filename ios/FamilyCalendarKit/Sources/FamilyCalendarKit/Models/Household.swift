@@ -61,7 +61,6 @@ public struct User: HouseholdScopedRecord {
     public var householdID: UUID
     public var displayName: String
     public var color: String
-    public var apnsToken: String?
     public var createdAt: Date
     public var updatedAt: Date
     public var updatedBy: UUID?
@@ -73,7 +72,6 @@ public struct User: HouseholdScopedRecord {
         householdID: UUID,
         displayName: String,
         color: String = "#3478F6",
-        apnsToken: String? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
         updatedBy: UUID? = nil,
@@ -84,7 +82,6 @@ public struct User: HouseholdScopedRecord {
         self.householdID = householdID
         self.displayName = displayName
         self.color = color
-        self.apnsToken = apnsToken
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.updatedBy = updatedBy
@@ -97,7 +94,6 @@ public struct User: HouseholdScopedRecord {
         case householdID = "household_id"
         case displayName = "display_name"
         case color
-        case apnsToken = "apns_token"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case updatedBy = "updated_by"

@@ -29,6 +29,7 @@ SCHEMA_SQL = [
     CLIENT_ROOT / "SQL/v2_superseded_edits.sql",
     CLIENT_ROOT / "SQL/v3_route_cache.sql",
     CLIENT_ROOT / "SQL/v4_activity_notified.sql",
+    CLIENT_ROOT / "SQL/v5_drop_apns_token.sql",
 ]
 APPLY_SQL = CLIENT_ROOT / "SQL/apply"
 SUPERSEDE_SQL = CLIENT_ROOT / "SQL/supersede"

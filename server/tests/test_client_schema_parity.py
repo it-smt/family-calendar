@@ -26,6 +26,7 @@ CLIENT_MIGRATIONS = [
     CLIENT_SOURCES / "Database/SQL/v2_superseded_edits.sql",
     CLIENT_SOURCES / "Database/SQL/v3_route_cache.sql",
     CLIENT_SOURCES / "Database/SQL/v4_activity_notified.sql",
+    CLIENT_SOURCES / "Database/SQL/v5_drop_apns_token.sql",
 ]
 # Records live wherever they belong, not only in Models/, so the parser
 # looks through the whole package rather than one folder.
@@ -42,9 +43,11 @@ EXTRA_CLIENT_COLUMNS = {
     "activity_entries": {"notified"},
 }
 # The cursor source lives only on the server, the cursor value only on the device.
-# Credentials never reach a device: an email and a password hash copied onto
-# both phones, and into every change payload, would be a schema mistake.
-SERVER_ONLY_TABLES = {"change_log", "alembic_version", "credentials"}
+# Neither credentials nor push tokens ever reach a device. An email and a
+# password hash copied onto both phones would be a schema mistake; a push token
+# is worse, because it belongs to one device and travelling through a shared row
+# lets the other phone overwrite it.
+SERVER_ONLY_TABLES = {"change_log", "alembic_version", "credentials", "devices"}
 # Device bookkeeping: the cursor, and the edits an arriving row replaced.
 CLIENT_ONLY_TABLES = {"sync_state", "superseded_edits", "route_cache", "sqlite_sequence"}
 

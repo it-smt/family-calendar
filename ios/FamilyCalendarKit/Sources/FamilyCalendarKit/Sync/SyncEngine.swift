@@ -102,6 +102,18 @@ public actor SyncEngine {
         await runUntilQuiet()
     }
 
+    /// Runs a sync and waits for it, for the one caller that has to: a
+    /// background push, where the system keeps the app alive only until the
+    /// handler returns.
+    public func syncNowAndWait() async {
+        do {
+            try await syncOnce()
+            await changesAppliedHandler?()
+        } catch {
+            Log.sync.debug("background sync failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     /// One round trip: send, then receive.
     public func syncOnce() async throws {
         guard let token = await credentials.token else {

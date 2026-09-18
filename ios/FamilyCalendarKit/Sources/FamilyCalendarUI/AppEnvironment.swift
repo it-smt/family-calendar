@@ -141,6 +141,14 @@ public final class AppEnvironment {
         Task { await engine.schedule() }
     }
 
+    /// A background push woke us. Pull, then put the alerts right.
+    ///
+    /// Awaited, unlike every other sync in this file, because the system is
+    /// holding the app awake only until this returns.
+    public func syncFromBackground() async {
+        await engine.syncNowAndWait()
+    }
+
     /// On the way to the background: one more sync, and a fresh schedule.
     ///
     /// The alerts have to be right before the app stops running, because from

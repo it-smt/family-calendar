@@ -46,3 +46,10 @@ class MeResponse(BaseModel):
     display_name: str
     email: str
     invite_code: str
+
+
+class DeviceRequest(BaseModel):
+    """Where to send a background wake-up."""
+
+    token: str = Field(min_length=8, max_length=200)
+    platform: str = Field(default="ios", max_length=20)

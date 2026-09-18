@@ -34,6 +34,5 @@ class User(Base, HouseholdScopedMixin):
 
     display_name: Mapped[str] = mapped_column(Text, nullable=False)
     color: Mapped[str] = mapped_column(String(9), nullable=False, server_default="#3478F6")
-    apns_token: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (Index("ix_users_household_id_updated_at", "household_id", "updated_at"),)
