@@ -59,9 +59,17 @@ public struct SupersededEdit: Codable, FetchableRecord, PersistableRecord, Ident
         }
     }
 
+    public struct Difference: Identifiable, Sendable {
+        public let field: String
+        public let mine: JSONValue
+        public let theirs: JSONValue
+
+        public var id: String { field }
+    }
+
     /// The fields that actually differ, for showing "was / now" rather than a
     /// wall of unchanged values.
-    public func differences() -> [(field: String, mine: JSONValue, theirs: JSONValue)] {
+    public func differences() -> [Difference] {
         guard
             let mineValues = try? JSONValue(jsonText: mine),
             let theirsValues = try? JSONValue(jsonText: theirs),
@@ -73,7 +81,9 @@ public struct SupersededEdit: Codable, FetchableRecord, PersistableRecord, Ident
 
         return mineObject
             .filter { field, value in theirsObject[field] != value }
-            .map { field, value in (field, value, theirsObject[field] ?? .null) }
+            .map { field, value in
+                Difference(field: field, mine: value, theirs: theirsObject[field] ?? .null)
+            }
             .sorted { $0.field < $1.field }
     }
 

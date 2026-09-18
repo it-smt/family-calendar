@@ -288,3 +288,45 @@ def test_the_swift_entity_types_match_the_servers():
     from app.sync.registry import ENTITY_TYPES
 
     assert set(swift_entity_tables()) == set(ENTITY_TYPES)
+
+
+#: The layers the spec lays down: Store -> Repository -> ViewModel -> View, with
+#: the network invisible above the repositories.
+NETWORK_TYPES = ("SyncAPI", "SyncEngine", "URLSession", "NWPathMonitor", "CredentialStore")
+
+UI_SOURCES = CLIENT_SOURCES.parent / "FamilyCalendarUI"
+
+
+def test_the_network_layer_is_invisible_above_the_repositories():
+    """A view model that can reach the network will eventually wait for it.
+
+    The whole point of the architecture is that the UI reads the database and
+    nothing else. AppEnvironment wires the engine up once and hands out
+    repositories; no view or view model is allowed to name the network.
+    """
+    offenders = {}
+    for path in sorted(UI_SOURCES.rglob("*.swift")):
+        if path.name == "AppEnvironment.swift":
+            continue  # the one place that wires them together
+        source = path.read_text()
+        named = [name for name in NETWORK_TYPES if re.search(rf"\b{name}\b", source)]
+        if named:
+            offenders[path.name] = named
+
+    assert offenders == {}
+
+
+def test_every_write_from_the_ui_goes_through_a_repository():
+    """No view or view model may write to the database directly."""
+    offenders = {}
+    for path in sorted(UI_SOURCES.rglob("*.swift")):
+        source = path.read_text()
+        named = [
+            name
+            for name in ("database.writer", "db.execute", "AppDatabase(")
+            if name in source
+        ]
+        if named:
+            offenders[path.name] = named
+
+    assert offenders == {}

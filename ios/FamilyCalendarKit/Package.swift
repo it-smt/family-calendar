@@ -5,7 +5,8 @@ let package = Package(
     name: "FamilyCalendarKit",
     platforms: [.iOS(.v17)],
     products: [
-        .library(name: "FamilyCalendarKit", targets: ["FamilyCalendarKit"])
+        .library(name: "FamilyCalendarKit", targets: ["FamilyCalendarKit"]),
+        .library(name: "FamilyCalendarUI", targets: ["FamilyCalendarUI"]),
     ],
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0")
@@ -15,6 +16,13 @@ let package = Package(
             name: "FamilyCalendarKit",
             dependencies: [.product(name: "GRDB", package: "GRDB.swift")],
             resources: [.copy("Database/SQL")],
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
+        // Views and view models. Kept in the package so the app target is a
+        // shell, and so this layer can be built without Xcode.
+        .target(
+            name: "FamilyCalendarUI",
+            dependencies: ["FamilyCalendarKit"],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(
