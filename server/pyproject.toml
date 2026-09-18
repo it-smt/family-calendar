@@ -13,13 +13,17 @@ dependencies = [
     "pydantic-settings>=2.6",
     "pyjwt[crypto]>=2.9",
     "argon2-cffi>=23.1",
+    # Used at run time by the APNs client, not only by the tests.
+    "httpx[http2]>=0.28",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
-    "httpx>=0.28",
+    # The reference RFC 5545 implementation the recurrence fixtures are checked
+    # against.
+    "python-dateutil>=2.9",
 ]
 
 [tool.pytest.ini_options]

@@ -22,6 +22,15 @@ services:
         condition: service_healthy
     environment:
       FC_DATABASE_URL: postgresql+asyncpg://fc:fc@db:5432/family_calendar
+      # Replace this before the server is reachable by anything but you. Without
+      # it the server signs tokens with the development key in the source and
+      # says so on startup.
+      FC_JWT_SECRET: ${FC_JWT_SECRET:-dev-insecure-secret-change-me-before-deploying}
+    # The schema has to exist before the first request, and running the
+    # migrations here means `docker compose up` is the whole of "run it".
+    command: >-
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
     ports:
       - "8000:8000"
     volumes:
