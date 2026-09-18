@@ -1,7 +1,7 @@
 import FamilyCalendarKit
 import SwiftUI
 
-/// The app: four things, because there are only four things.
+/// Четыре вкладки, потому что дел всего четыре.
 public struct RootView: View {
     private let environment: AppEnvironment
 
@@ -12,21 +12,21 @@ public struct RootView: View {
     public var body: some View {
         TabView {
             DayView(environment: environment)
-                .tabItem { Label("Day", systemImage: "calendar") }
+                .tabItem { Label("День", systemImage: "calendar") }
 
             ShoppingListView(environment: environment)
-                .tabItem { Label("Shopping", systemImage: "cart") }
+                .tabItem { Label("Покупки", systemImage: "cart") }
 
             ActivityFeedView(environment: environment)
-                .tabItem { Label("Changes", systemImage: "clock.arrow.circlepath") }
+                .tabItem { Label("Изменения", systemImage: "clock.arrow.circlepath") }
 
             SettingsView(environment: environment)
-                .tabItem { Label("Setup", systemImage: "gearshape") }
+                .tabItem { Label("Настройки", systemImage: "gearshape") }
         }
     }
 }
 
-/// Categories, packing lists, and the invite code to read out.
+/// Категории, шаблоны сборов и код приглашения, который нужно продиктовать.
 public struct SettingsView: View {
     private let environment: AppEnvironment
 
@@ -36,44 +36,70 @@ public struct SettingsView: View {
 
     public var body: some View {
         NavigationStack {
-            List {
-                NavigationLink {
-                    CategoriesView(environment: environment)
-                } label: {
-                    Label("Categories", systemImage: "tag")
-                }
+            ScrollView {
+                VStack(spacing: 10) {
+                    NavigationLink {
+                        CategoriesView(environment: environment)
+                    } label: {
+                        row("Категории", systemImage: "tag")
+                    }
+                    .buttonStyle(.plain)
 
-                NavigationLink {
-                    PackingTemplatesView(environment: environment)
-                } label: {
-                    Label("What to bring", systemImage: "bag")
-                }
+                    NavigationLink {
+                        PackingTemplatesView(environment: environment)
+                    } label: {
+                        row("Что взять с собой", systemImage: "bag")
+                    }
+                    .buttonStyle(.plain)
 
-                Section {
-                    LabeledContent("Not synchronised", value: "\(environment.status.pendingChanges)")
-                    if let lastSynced = environment.status.lastSyncedAt {
-                        LabeledContent("Last sync") {
-                            Text(lastSynced, format: .relative(presentation: .named))
+                    VStack(alignment: .leading, spacing: 8) {
+                        LabeledContent("Не отправлено") {
+                            Text("\(environment.status.pendingChanges)").monospacedDigit()
                         }
+                        if let lastSynced = environment.status.lastSyncedAt {
+                            LabeledContent("Синхронизация") {
+                                Text(lastSynced, format: .relative(presentation: .named))
+                            }
+                        }
+                        Text("Всё работает без сети. Это только про то, насколько отстал второй телефон.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-                } footer: {
-                    Text("Everything works offline. This is only how far behind the other phone is.")
-                }
+                    .card()
 
-                if !AppDatabase.isSharedWithWidget {
-                    Section {
-                        Label("The widget cannot see this data", systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.orange)
-                    } footer: {
-                        Text("""
-                            The App Group capability is off, so the database is in \
-                            the app's own container. Everything here works; the \
-                            widget has nowhere to read from.
-                            """)
+                    if !AppDatabase.isSharedWithWidget {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Label("Виджет не видит эти данные", systemImage: "exclamationmark.triangle")
+                                .font(.subheadline)
+                                .foregroundStyle(.orange)
+                            Text("""
+                                App Group выключен, поэтому база лежит в контейнере \
+                                приложения. Здесь работает всё; виджету просто неоткуда \
+                                читать.
+                                """)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .card()
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 24)
             }
-            .navigationTitle("Setup")
+            .themedScreen()
+            .navigationTitle("Настройки")
+            .navigationBarTitleDisplayMode(.inline)
         }
+    }
+
+    private func row(_ title: String, systemImage: String) -> some View {
+        HStack {
+            Label(title, systemImage: systemImage)
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .card()
     }
 }

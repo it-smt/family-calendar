@@ -31,16 +31,16 @@ public struct CategoriesView: View {
                         Button(role: .destructive) {
                             try? environment.categories.delete(category)
                         } label: {
-                            Label("Delete", systemImage: "trash")
+                            Label("Удалить", systemImage: "trash")
                         }
                     }
                 }
             }
 
-            Section("New") {
-                TextField("Name", text: $newName)
-                ColorPicker("Colour", selection: $newColor, supportsOpacity: false)
-                Button("Add") {
+            Section("Новая") {
+                TextField("Название", text: $newName)
+                ColorPicker("Цвет", selection: $newColor, supportsOpacity: false)
+                Button("Добавить") {
                     try? environment.categories.create(
                         name: newName.trimmingCharacters(in: .whitespaces),
                         colorHex: newColor.hexString,
@@ -51,7 +51,7 @@ public struct CategoriesView: View {
                 .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
-        .navigationTitle("Categories")
+        .navigationTitle("Категории")
         .task {
             guard observation == nil else { return }
             observation = Task {

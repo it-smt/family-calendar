@@ -1,7 +1,7 @@
 import FamilyCalendarKit
 import SwiftUI
 
-/// "Your change was replaced."
+/// "Твою правку заменили."
 ///
 /// Last-write-wins means one of two offline edits to the same task loses, and
 /// it loses fields the winner never touched. That is the protocol. This is what
@@ -15,7 +15,7 @@ struct SupersededEditRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("Your change was replaced", systemImage: "exclamationmark.arrow.circlepath")
+            Label("Твою правку заменили", systemImage: "exclamationmark.arrow.circlepath")
                 .font(.subheadline.weight(.medium))
 
             ForEach(notice.differences()) { difference in
@@ -35,10 +35,10 @@ struct SupersededEditRow: View {
             }
 
             HStack {
-                Button("Put mine back", action: onRestore)
+                Button("Вернуть моё", action: onRestore)
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
-                Button("Leave it", action: onDismiss)
+                Button("Оставить", action: onDismiss)
                     .buttonStyle(.bordered)
                     .controlSize(.small)
             }
@@ -48,12 +48,12 @@ struct SupersededEditRow: View {
 
     private func label(for field: String) -> String {
         switch field {
-        case "title": "Title"
-        case "starts_at": "Time"
-        case "notes": "Notes"
-        case "location_name": "Place"
-        case "deleted_at": "Deleted"
-        case "completed_at": "Done"
+        case "title": "Название"
+        case "starts_at": "Время"
+        case "notes": "Заметки"
+        case "location_name": "Место"
+        case "deleted_at": "Удалено"
+        case "completed_at": "Выполнено"
         default: field.replacingOccurrences(of: "_", with: " ").capitalized
         }
     }
@@ -68,7 +68,7 @@ struct SupersededEditRow: View {
                 .map { $0.formatted(date: .abbreviated, time: .shortened) } ?? text
         case .int(let number): String(number)
         case .double(let number): String(number)
-        case .bool(let flag): flag ? "yes" : "no"
+        case .bool(let flag): flag ? "да" : "нет"
         case .array, .object: "—"
         }
     }

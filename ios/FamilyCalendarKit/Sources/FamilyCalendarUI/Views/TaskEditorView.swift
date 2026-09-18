@@ -20,40 +20,40 @@ public struct TaskEditorView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Title", text: $model.title, axis: .vertical)
+                    TextField("Название", text: $model.title, axis: .vertical)
                         .font(.headline)
-                    TextField("Notes", text: $model.notes, axis: .vertical)
+                    TextField("Заметки", text: $model.notes, axis: .vertical)
                         .lineLimit(1...4)
                 }
 
-                Section("When") {
-                    Toggle("At a time", isOn: $model.hasTime.animation())
+                Section("Когда") {
+                    Toggle("Ко времени", isOn: $model.hasTime.animation())
                     if model.hasTime {
-                        DatePicker("Starts", selection: $model.startsAt)
-                        Picker("Lasts", selection: $model.durationMinutes) {
+                        DatePicker("Начало", selection: $model.startsAt)
+                        Picker("Длится", selection: $model.durationMinutes) {
                             ForEach([15, 30, 45, 60, 90, 120, 180], id: \.self) { minutes in
                                 Text(durationLabel(minutes)).tag(minutes)
                             }
                         }
                     } else {
-                        Toggle("All day", isOn: $model.isAllDay)
+                        Toggle("Весь день", isOn: $model.isAllDay)
                     }
                 }
 
-                Section("Where") {
-                    TextField("Place", text: $model.locationName)
-                    Picker("Getting there", selection: $model.travelMode) {
-                        Text("Not set").tag(TravelMode.none)
-                        Text("Walking").tag(TravelMode.walking)
-                        Text("Driving").tag(TravelMode.driving)
-                        Text("Transit").tag(TravelMode.transit)
+                Section("Где") {
+                    TextField("Место", text: $model.locationName)
+                    Picker("Как добираться", selection: $model.travelMode) {
+                        Text("Не важно").tag(TravelMode.none)
+                        Text("Пешком").tag(TravelMode.walking)
+                        Text("На машине").tag(TravelMode.driving)
+                        Text("Транспортом").tag(TravelMode.transit)
                     }
                     .disabled(model.locationName.isEmpty)
                 }
 
-                Section("Category") {
-                    Picker("Category", selection: $model.categoryID) {
-                        Text("None").tag(UUID?.none)
+                Section("Категория") {
+                    Picker("Категория", selection: $model.categoryID) {
+                        Text("Без категории").tag(UUID?.none)
                         ForEach(model.categories) { category in
                             Label {
                                 Text(category.name)
@@ -69,20 +69,20 @@ public struct TaskEditorView: View {
                     subtaskSection
                 } else {
                     Section {
-                        Text("Save first, then add what to bring.")
+                        Text("Сначала сохрани — потом добавишь, что взять с собой.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
                 }
             }
-            .navigationTitle(model.isEditing ? "Task" : "New task")
+            .navigationTitle(model.isEditing ? "Задача" : "Новая задача")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Отмена") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
+                    Button("Сохранить") {
                         model.save()
                         dismiss()
                     }
@@ -96,7 +96,7 @@ public struct TaskEditorView: View {
 
     /// Subtasks, which double as the "what to bring" list.
     private var subtaskSection: some View {
-        Section("What to bring") {
+        Section("Что взять с собой") {
             ForEach(model.subtasks) { subtask in
                 Button {
                     model.toggle(subtask)
@@ -114,15 +114,15 @@ public struct TaskEditorView: View {
                     Button(role: .destructive) {
                         model.delete(subtask)
                     } label: {
-                        Label("Delete", systemImage: "trash")
+                        Label("Удалить", systemImage: "trash")
                     }
                 }
             }
 
             HStack {
-                TextField("Add an item", text: $model.newSubtaskTitle)
+                TextField("Добавить пункт", text: $model.newSubtaskTitle)
                     .onSubmit { model.addSubtask() }
-                Button("Add", action: model.addSubtask)
+                Button("Добавить", action: model.addSubtask)
                     .disabled(model.newSubtaskTitle.trimmingCharacters(in: .whitespaces).isEmpty)
             }
 
@@ -132,7 +132,7 @@ public struct TaskEditorView: View {
                         Button(template.name) { model.apply(template) }
                     }
                 } label: {
-                    Label("Use a list", systemImage: "bag")
+                    Label("Взять из шаблона", systemImage: "bag")
                         .font(.subheadline)
                 }
             }

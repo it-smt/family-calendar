@@ -33,12 +33,12 @@ public struct PackingTemplatesView: View {
                     Button(role: .destructive) {
                         try? environment.packingTemplates.delete(template)
                     } label: {
-                        Label("Delete", systemImage: "trash")
+                        Label("Удалить", systemImage: "trash")
                     }
                 }
             }
         }
-        .navigationTitle("What to bring")
+        .navigationTitle("Что взять с собой")
         .toolbar {
             Button {
                 editing = PackingTemplate(householdID: environment.householdID, name: "")
@@ -82,35 +82,35 @@ struct PackingTemplateEditor: View {
     var body: some View {
         NavigationStack {
             Form {
-                TextField("Name", text: $template.name)
+                TextField("Название", text: $template.name)
 
-                Section("Items") {
+                Section("Пункты") {
                     ForEach(Array(template.items.enumerated()), id: \.offset) { index, item in
                         Text(item)
                             .swipeActions {
                                 Button(role: .destructive) {
                                     template.items.remove(at: index)
                                 } label: {
-                                    Label("Delete", systemImage: "trash")
+                                    Label("Удалить", systemImage: "trash")
                                 }
                             }
                     }
                     HStack {
-                        TextField("Add an item", text: $newItem)
+                        TextField("Добавить пункт", text: $newItem)
                             .onSubmit(addItem)
-                        Button("Add", action: addItem)
+                        Button("Добавить", action: addItem)
                             .disabled(newItem.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
                 }
             }
-            .navigationTitle(template.name.isEmpty ? "New list" : template.name)
+            .navigationTitle(template.name.isEmpty ? "Новый список" : template.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Отмена") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
+                    Button("Сохранить") {
                         try? environment.packingTemplates.save(template)
                         dismiss()
                     }

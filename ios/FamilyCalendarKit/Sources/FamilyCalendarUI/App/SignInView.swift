@@ -30,8 +30,8 @@ public struct SignInView: View {
     @State private var problem: String?
 
     enum Mode: String, CaseIterable {
-        case register = "Start a household"
-        case join = "Join one"
+        case register = "Завести календарь"
+        case join = "Присоединиться"
     }
 
     public var body: some View {
@@ -44,22 +44,22 @@ public struct SignInView: View {
                 .listRowBackground(Color.clear)
 
                 Section {
-                    TextField("Your name", text: $displayName)
+                    TextField("Как тебя зовут", text: $displayName)
                         .textContentType(.name)
-                    TextField("Email", text: $email)
+                    TextField("Почта", text: $email)
                         .textContentType(.emailAddress)
                         .keyboardType(.emailAddress)
                         .textInputAutocapitalization(.never)
-                    SecureField("Password", text: $password)
+                    SecureField("Пароль", text: $password)
                         .textContentType(.password)
                 }
 
                 Section {
                     switch mode {
                     case .register:
-                        TextField("Household name", text: $householdName)
+                        TextField("Название календаря", text: $householdName)
                     case .join:
-                        TextField("Invite code", text: $inviteCode)
+                        TextField("Код приглашения", text: $inviteCode)
                             .textInputAutocapitalization(.characters)
                             .autocorrectionDisabled()
                     }
@@ -72,13 +72,15 @@ public struct SignInView: View {
                 }
 
                 Section {
-                    Button(mode == .register ? "Create" : "Join") {
+                    Button(mode == .register ? "Создать" : "Войти") {
                         Task { await submit() }
                     }
                     .disabled(isWorking || !isComplete)
                 }
             }
-            .navigationTitle("Family calendar")
+            .themedScreen()
+            .navigationTitle("Семейный календарь")
+            .navigationBarTitleDisplayMode(.inline)
             .disabled(isWorking)
             .overlay { if isWorking { ProgressView() } }
         }
@@ -115,7 +117,7 @@ public struct SignInView: View {
                 let userID = UUID(uuidString: session.userId),
                 let householdID = UUID(uuidString: session.householdId)
             else {
-                problem = "The server sent something unexpected."
+                problem = "Сервер ответил чем-то неожиданным."
                 return
             }
 
@@ -139,11 +141,11 @@ public struct SignInView: View {
                 )
             )
         } catch SyncAPI.Failure.unauthorized {
-            problem = "That email and password do not match."
+            problem = "Почта и пароль не совпадают."
         } catch SyncAPI.Failure.rejected(_, _) {
-            problem = mode == .join ? "No household has that code." : "Could not create the household."
+            problem = mode == .join ? "Нет календаря с таким кодом." : "Не получилось создать календарь."
         } catch {
-            problem = "Could not reach the server."
+            problem = "Сервер не отвечает."
         }
     }
 }

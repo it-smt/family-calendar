@@ -49,6 +49,8 @@ public struct AppRootView: View {
         switch state {
         case .loading:
             ProgressView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .themedScreen()
         case .signedOut(let database, let credentials):
             SignInView(database: database, credentials: credentials) { environment in
                 begin(with: environment, credentials: credentials)
@@ -57,7 +59,7 @@ public struct AppRootView: View {
             RootView(environment: environment)
         case .failed(let message):
             ContentUnavailableView(
-                "Could not open the calendar",
+                "Не удалось открыть календарь",
                 systemImage: "xmark.octagon",
                 description: Text(message)
             )

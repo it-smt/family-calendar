@@ -49,6 +49,20 @@ public final class DayViewModel {
         visibleTasks.filter { !$0.isCompleted }.count
     }
 
+    /// The next thing that has not happened yet — the one the screen leads with.
+    ///
+    /// On a day that is not today there is no "next": the whole day is ahead or
+    /// behind, and singling one out would be arbitrary.
+    public var nextTask: CalendarTask? {
+        guard Calendar.current.isDateInToday(day) else { return nil }
+        let now = Date()
+        return visibleTasks.first { task in
+            guard !task.isCompleted else { return false }
+            guard let startsAt = task.startsAt else { return task.isAllDay }
+            return startsAt >= now
+        }
+    }
+
     public func onAppear() {
         restartTaskObservation()
         guard supportObservation == nil else { return }

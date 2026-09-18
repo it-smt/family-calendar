@@ -2,8 +2,8 @@ import FamilyCalendarKit
 import OSLog
 import SwiftUI
 
-/// The shopping list. Quick to add to, because that is the only thing anyone
-/// does with it while standing in a kitchen.
+/// Покупки. Быстро добавить — единственное, что с этим экраном делают,
+/// стоя на кухне, поэтому поле ввода вверху и клавиатура не закрывается.
 public struct ShoppingListView: View {
     @State private var items: [ShoppingItem] = []
     @State private var draft: String = ""
@@ -18,52 +18,76 @@ public struct ShoppingListView: View {
 
     public var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    HStack {
-                        Image(systemName: "plus.circle.fill").foregroundStyle(.secondary)
-                        TextField("Add something", text: $draft)
+            ScrollView {
+                VStack(spacing: 10) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(.secondary)
+                        TextField("Что купить", text: $draft)
                             .focused($addingFocused)
                             .onSubmit(add)
                             .submitLabel(.done)
                     }
-                }
+                    .card(emphasised: true)
 
-                ForEach(items) { item in
-                    Button {
-                        try? environment.shopping.setBought(item, !item.isBought)
-                    } label: {
-                        HStack {
-                            Image(systemName: item.isBought ? "checkmark.circle.fill" : "circle")
-                                .foregroundStyle(item.isBought ? .green : .secondary)
-                            Text(item.title)
-                                .strikethrough(item.isBought)
-                                .foregroundStyle(item.isBought ? .secondary : .primary)
-                            Spacer()
-                            if let quantity = item.quantity, !quantity.isEmpty {
-                                Text(quantity).font(.caption).foregroundStyle(.secondary)
+                    if items.isEmpty {
+                        Text("Список пуст")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 36)
+                            .card()
+                    }
+
+                    ForEach(items) { item in
+                        Button {
+                            withAnimation(.snappy) {
+                                try? environment.shopping.setBought(item, !item.isBought)
+                            }
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: item.isBought ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(item.isBought ? .green : .secondary)
+                                    .symbolEffect(.bounce, value: item.isBought)
+                                Text(item.title)
+                                    .strikethrough(item.isBought)
+                                    .foregroundStyle(item.isBought ? .secondary : .primary)
+                                Spacer()
+                                if let quantity = item.quantity, !quantity.isEmpty {
+                                    Text(quantity)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
                         }
-                    }
-                    .buttonStyle(.plain)
-                    .swipeActions {
-                        Button(role: .destructive) {
-                            try? environment.shopping.delete(item)
-                        } label: {
-                            Label("Delete", systemImage: "trash")
+                        .buttonStyle(.plain)
+                        .card()
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                try? environment.shopping.delete(item)
+                            } label: {
+                                Label("Удалить", systemImage: "trash")
+                            }
                         }
+                        .transition(.opacity.combined(with: .scale(scale: 0.97)))
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 24)
             }
-            .navigationTitle("Shopping")
+            .themedScreen()
+            .navigationTitle("Покупки")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     SyncIndicator(status: environment.status)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Clear bought") {
-                        try? environment.shopping.clearBought()
+                    Button("Убрать купленное") {
+                        withAnimation(.snappy) { try? environment.shopping.clearBought() }
                     }
+                    .font(.caption)
                     .disabled(!items.contains(where: \.isBought))
                 }
             }
@@ -72,7 +96,7 @@ public struct ShoppingListView: View {
                 observation = Task {
                     do {
                         for try await value in environment.shopping.observe() {
-                            items = value
+                            withAnimation(.snappy) { items = value }
                         }
                     } catch {
                         Log.database.error("shopping observation ended: \(error.localizedDescription, privacy: .public)")
@@ -89,9 +113,9 @@ public struct ShoppingListView: View {
     private func add() {
         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        try? environment.shopping.add(title: trimmed)
+        withAnimation(.snappy) { try? environment.shopping.add(title: trimmed) }
         draft = ""
-        // Stay in the field: people add three things, not one.
+        // Остаёмся в поле: добавляют обычно не одно.
         addingFocused = true
     }
 }

@@ -2,11 +2,10 @@ import FamilyCalendarKit
 import OSLog
 import SwiftUI
 
-/// "She moved the doctor to 16:00."
+/// «Слава перенёс врача на 16:00».
 ///
-/// The sentence is built here, not stored. The server keeps the verb and the
-/// label; the language, and which of the two people is "you", are known only on
-/// the device.
+/// Фраза собирается здесь, а не хранится. Сервер держит глагол и ярлык; кто из
+/// двоих «ты» и на каком это языке — знает только телефон.
 public struct ActivityFeedView: View {
     @State private var entries: [ActivityEntry] = []
     @State private var people: [UUID: User] = [:]
@@ -20,27 +19,50 @@ public struct ActivityFeedView: View {
 
     public var body: some View {
         NavigationStack {
-            List {
-                if entries.isEmpty {
-                    ContentUnavailableView(
-                        "Nothing yet",
-                        systemImage: "clock.arrow.circlepath",
-                        description: Text("Changes either of you make will show up here.")
-                    )
-                } else {
-                    ForEach(entries) { entry in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(sentence(for: entry))
+            ScrollView {
+                VStack(spacing: 10) {
+                    if entries.isEmpty {
+                        VStack(spacing: 6) {
+                            Image(systemName: "clock.arrow.circlepath")
+                                .font(.largeTitle)
+                                .foregroundStyle(.secondary)
+                            Text("Пока ничего")
                                 .font(.subheadline)
-                            Text(entry.createdAt, format: .relative(presentation: .named))
+                            Text("Здесь появится всё, что меняет каждый из вас")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
                         }
-                        .padding(.vertical, 2)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 40)
+                        .card()
+                    }
+
+                    ForEach(entries) { entry in
+                        HStack(alignment: .top, spacing: 10) {
+                            Circle()
+                                .fill(colour(for: entry.actorID))
+                                .frame(width: 8, height: 8)
+                                .padding(.top, 6)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(sentence(for: entry))
+                                    .font(.subheadline)
+                                Text(entry.createdAt, format: .relative(presentation: .named))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .card()
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 24)
             }
-            .navigationTitle("Changes")
+            .themedScreen()
+            .navigationTitle("Изменения")
+            .navigationBarTitleDisplayMode(.inline)
             .task {
                 guard observation == nil else { return }
                 observation = Task {
@@ -60,7 +82,7 @@ public struct ActivityFeedView: View {
     private func observeEntries() async {
         do {
             for try await value in environment.activityFeed.observe() {
-                entries = value
+                withAnimation(.snappy) { entries = value }
             }
         } catch {
             Log.database.error("feed observation ended: \(error.localizedDescription, privacy: .public)")
@@ -77,29 +99,35 @@ public struct ActivityFeedView: View {
         }
     }
 
+    private func colour(for actor: UUID) -> Color {
+        actor == environment.currentUserID
+            ? .accentColor
+            : people[actor].map { Color(hex: $0.color) } ?? .secondary
+    }
+
     private func sentence(for entry: ActivityEntry) -> String {
-        let who = entry.actorID == environment.currentUserID
-            ? "You"
-            : people[entry.actorID]?.displayName ?? "Someone"
+        let mine = entry.actorID == environment.currentUserID
+        let who = mine ? "Ты" : people[entry.actorID]?.displayName ?? "Кто-то"
 
-        let what: String
-        switch entry.entityType {
-        case "task": what = "task"
-        case "subtask": what = "item"
-        case "shopping_item": what = "shopping item"
-        default: what = entry.entityType
+        let what = switch entry.entityType {
+        case "task": "задачу"
+        case "subtask": "пункт"
+        case "shopping_item": "покупку"
+        default: entry.entityType
         }
 
-        let verb: String
-        switch entry.action {
-        case "created": verb = "added"
-        case "updated": verb = "changed"
-        case "completed": verb = "finished"
-        case "deleted": verb = "removed"
-        default: verb = entry.action
+        // Прошедшее время согласуется с родом, а род мы не знаем. Поэтому
+        // безличные формы: «Аня — добавила» звучало бы лучше, но «Аня — добавил»
+        // звучало бы плохо, а угадать нельзя.
+        let verb = switch entry.action {
+        case "created": "добавил(а)"
+        case "updated": "изменил(а)"
+        case "completed": "выполнил(а)"
+        case "deleted": "удалил(а)"
+        default: entry.action
         }
 
-        let label = entry.summary.isEmpty ? what : "\(what) “\(entry.summary)”"
-        return "\(who) \(verb) the \(label)"
+        let label = entry.summary.isEmpty ? what : "\(what) «\(entry.summary)»"
+        return "\(who) \(verb) \(label)"
     }
 }
