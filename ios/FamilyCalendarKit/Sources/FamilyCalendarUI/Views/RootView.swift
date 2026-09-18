@@ -59,6 +59,19 @@ public struct SettingsView: View {
                 } footer: {
                     Text("Everything works offline. This is only how far behind the other phone is.")
                 }
+
+                if !AppDatabase.isSharedWithWidget {
+                    Section {
+                        Label("The widget cannot see this data", systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.orange)
+                    } footer: {
+                        Text("""
+                            The App Group capability is off, so the database is in \
+                            the app's own container. Everything here works; the \
+                            widget has nowhere to read from.
+                            """)
+                    }
+                }
             }
             .navigationTitle("Setup")
         }

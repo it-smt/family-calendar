@@ -14,7 +14,13 @@ public struct WidgetStore: Sendable {
     }
 
     public static func shared() throws -> WidgetStore {
-        WidgetStore(database: try AppDatabase.shared())
+        // Unlike the app, the widget cannot fall back to its own container:
+        // its own container is empty, and always will be. Without the App
+        // Group there is genuinely nothing to show.
+        guard AppDatabase.isSharedWithWidget else {
+            throw AppDatabase.DatabaseError.appGroupUnavailable(AppDatabase.appGroupIdentifier)
+        }
+        return WidgetStore(database: try AppDatabase.shared())
     }
 
     /// One snapshot per moment the widget should be redrawn at.
