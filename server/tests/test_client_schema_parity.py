@@ -173,3 +173,85 @@ def test_swift_records_cover_every_client_column(client_schema):
 def test_every_synced_table_has_a_swift_record(client_schema):
     missing = client_tables(client_schema) - set(swift_records())
     assert missing == set()
+
+
+async def test_a_pulled_change_inserts_into_the_device_database_unchanged(
+    api, family, client_schema
+):
+    """The point of the whole wire format, checked end to end.
+
+    A payload that came out of `/sync/pull` goes straight into the SQLite schema
+    the device runs, with no translation beyond what GRDB does for a JSON column.
+    If this test needs a conversion added to it, the device needs one too.
+    """
+    import json
+    import uuid as uuid_module
+
+    from tests.conftest import change, task_payload, wire_time
+
+    task_id = uuid_module.uuid4()
+    pushed = task_payload(
+        family,
+        task_id=task_id,
+        title="Pool",
+        notes="bring the certificate",
+        starts_at=wire_time(60),
+        duration_minutes=90,
+        is_all_day=False,
+        location_name="Sport complex",
+        latitude=55.751244,
+        longitude=37.618423,
+        rrule="FREQ=WEEKLY;BYDAY=SA",
+        recurrence_exceptions=[wire_time(10080)],
+        travel_mode="driving",
+        assignee_id=str(family.bob_id),
+    )
+    response = await api.post(
+        "/sync/push",
+        json={"changes": [change("task", pushed)]},
+        headers=family.headers(),
+    )
+    assert response.status_code == 200
+
+    pulled = (
+        await api.get("/sync/pull", params={"since": 0}, headers=family.headers())
+    ).json()
+    payload = next(c["payload"] for c in pulled["changes"] if c["entity_type"] == "task")
+
+    # GRDB stores an array property as JSON text; everything else goes in as is.
+    values = {
+        key: json.dumps(value) if isinstance(value, (list, dict)) else value
+        for key, value in payload.items()
+    }
+    columns = ", ".join(values)
+    placeholders = ", ".join(f":{name}" for name in values)
+    client_schema.execute(
+        "INSERT INTO households (id, name, invite_code, created_at, updated_at) "
+        "VALUES (:h, 'Home', 'PARITY', :t, :t)",
+        {"h": payload["household_id"], "t": payload["updated_at"]},
+    )
+    for user_id in (payload["created_by"], payload["assignee_id"]):
+        client_schema.execute(
+            "INSERT INTO users (id, household_id, display_name, created_at, updated_at) "
+            "VALUES (:u, :h, 'Someone', :t, :t)",
+            {"u": user_id, "h": payload["household_id"], "t": payload["updated_at"]},
+        )
+    client_schema.execute(f"INSERT INTO tasks ({columns}) VALUES ({placeholders})", values)
+
+    stored = client_schema.execute(
+        "SELECT title, starts_at, duration_minutes, is_all_day, latitude, "
+        "travel_mode, recurrence_exceptions, dirty FROM tasks WHERE id = :i",
+        {"i": payload["id"]},
+    ).fetchone()
+
+    assert stored[0] == "Pool"
+    assert stored[1] == wire_time(60)
+    assert stored[2] == 90
+    assert stored[3] == 0
+    assert stored[4] == 55.751244
+    assert stored[5] == "driving"
+    assert json.loads(stored[6]) == [wire_time(10080)]
+    # A row that arrived from the server is not waiting to be sent back.
+    assert stored[7] == 0
+
+    client_schema.rollback()
