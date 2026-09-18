@@ -55,16 +55,22 @@ Xcode asks which products to add to which target. Add both to
 
 The first build fetches GRDB, so it needs a network and takes a minute.
 
-## 4. Add the app's source
+## 4. Add the app's one source file
 
-Drag `ios/FamilyCalendar/FamilyCalendarApp.swift`, `SignInView.swift` and
-`AppDelegate.swift` into the `FamilyCalendar` group.
+Drag `ios/FamilyCalendar/FamilyCalendarApp.swift` into the `FamilyCalendar`
+group, and tick **FamilyCalendar** under "Add to targets".
 
-In the dialog: **uncheck "Copy items if needed"**, tick **FamilyCalendar** under
-"Add to targets".
+That is the only file the app target needs: `@main` has to live there, and
+everything else is in the package. This is deliberate — a hand-added file can
+become a *copy* of the one in the repository and then stop matching it, so
+changes land in git and never reach the build. A local package is always
+referenced by path.
 
-Unchecking matters. Copying would give you a second set of files, and editing
-one would silently stop affecting the other.
+If the dialog offers **Copy** or **Move**, either is fine for this one file,
+because it should never change again. If you would rather it stay linked to the
+repository, use **File → Add Files to "FamilyCalendar"…** from the menu instead
+of dragging: that sheet has the **"Copy items if needed"** checkbox, and leaving
+it unticked references the file where it is.
 
 ## 5. Set the deployment target
 
@@ -83,9 +89,9 @@ Target **FamilyCalendar → Info**, add a row:
 * Key: `App Transport Security Settings` (a Dictionary)
 * Inside it: `Allow Local Networking` = `YES`
 
-On a real device, replace `localhost` in
-`ios/FamilyCalendar/FamilyCalendarApp.swift` with your Mac's address on the
-network (`ipconfig getifaddr en0`), and give ATS an exception for that host.
+On a real device, replace `localhost` in `FamilyCalendarApp.swift`'s `init()`
+with your Mac's address on the network (`ipconfig getifaddr en0`), and give ATS
+an exception for that host.
 
 While you are in **Info**, add these too — the app asks for them later and the
 system kills an app that asks without a reason string:

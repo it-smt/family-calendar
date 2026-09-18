@@ -1,14 +1,20 @@
 # App target
 
-A shell. Everything else is in `../FamilyCalendarKit`:
+One file, on purpose.
+
+Everything else lives in `../FamilyCalendarKit`:
 
 * `FamilyCalendarKit` — database, records, repositories, sync.
-* `FamilyCalendarUI` — views and view models.
+* `FamilyCalendarUI` — views, view models, and the launch path
+  (`App/AppRootView.swift`, `App/SignInView.swift`, `App/AppDelegate.swift`).
 
-To build, make an iOS app target in Xcode, add these two files to it, and add
-the package at `../FamilyCalendarKit` as a local dependency.
+A file added to an Xcode project by hand can quietly become a *copy* of the one
+in the repository, and then stop matching it — changes land in git and never
+reach the build, which is maddening to diagnose. A local Swift package is always
+referenced by path, never copied, so keeping the code there removes the problem
+rather than documenting it.
 
-The target needs the App Group entitlement
-(`group.com.example.familycalendar`, and the same string in
-`AppDatabase.appGroupIdentifier`) so the widget can read the database directly
-in stage 7. Set `Configuration.serverURL` to wherever the server runs.
+`FamilyCalendarApp.swift` is the exception that cannot be avoided: `@main` has
+to be in the app target. It is twenty-odd lines and should never need changing.
+
+Set `ServerAddress.url` in its `init()` to point at the server.

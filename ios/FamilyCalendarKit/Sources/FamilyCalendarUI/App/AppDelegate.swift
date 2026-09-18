@@ -1,5 +1,4 @@
 import FamilyCalendarKit
-import FamilyCalendarUI
 import OSLog
 import SwiftUI
 import UIKit
@@ -9,15 +8,20 @@ import UIKit
 /// A background push wakes the app, which syncs and reschedules its alerts. It
 /// carries no data — putting the change in the notification would make delivery
 /// part of the protocol, and APNs makes no promise of delivery.
-final class AppDelegate: NSObject, UIApplicationDelegate {
+public final class AppDelegate: NSObject, UIApplicationDelegate {
     /// Set once the environment exists. Until then a push has nothing to sync
     /// with, and nothing is lost by ignoring it.
-    static let shared = AppDelegate()
+    ///
+    /// `@UIApplicationDelegateAdaptor` makes its own instance, so there is no
+    /// shared one to reach for: whoever holds the adaptor sets these.
+    public var environment: AppEnvironment?
+    public var pushRegistration: PushRegistration?
 
-    var environment: AppEnvironment?
-    var pushRegistration: PushRegistration?
+    public override init() {
+        super.init()
+    }
 
-    func application(
+    public func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions options: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
@@ -25,7 +29,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         return true
     }
 
-    func application(
+    public func application(
         _ application: UIApplication,
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
     ) {
@@ -34,7 +38,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         }
     }
 
-    func application(
+    public func application(
         _ application: UIApplication,
         didFailToRegisterForRemoteNotificationsWithError error: any Error
     ) {
@@ -43,7 +47,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         Log.auth.debug("no remote notifications: \(error.localizedDescription, privacy: .public)")
     }
 
-    func application(
+    public func application(
         _ application: UIApplication,
         didReceiveRemoteNotification payload: [AnyHashable: Any]
     ) async -> UIBackgroundFetchResult {

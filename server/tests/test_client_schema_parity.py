@@ -316,6 +316,12 @@ NETWORK_TYPES = ("SyncAPI", "SyncEngine", "URLSession", "NWPathMonitor", "Creden
 UI_SOURCES = CLIENT_SOURCES.parent / "FamilyCalendarUI"
 
 
+#: Where the layers are assembled: the environment that owns the engine, and the
+#: launch path, which includes the one screen with nothing local to work from
+#: yet. Everything else in the UI module reads the database and nothing else.
+COMPOSITION_ROOT = {"AppEnvironment.swift"}
+
+
 def test_the_network_layer_is_invisible_above_the_repositories():
     """A view model that can reach the network will eventually wait for it.
 
@@ -325,8 +331,8 @@ def test_the_network_layer_is_invisible_above_the_repositories():
     """
     offenders = {}
     for path in sorted(UI_SOURCES.rglob("*.swift")):
-        if path.name == "AppEnvironment.swift":
-            continue  # the one place that wires them together
+        if path.name in COMPOSITION_ROOT or path.parent.name == "App":
+            continue
         source = path.read_text()
         named = [name for name in NETWORK_TYPES if re.search(rf"\b{name}\b", source)]
         if named:

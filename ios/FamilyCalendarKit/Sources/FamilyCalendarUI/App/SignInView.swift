@@ -1,15 +1,24 @@
 import FamilyCalendarKit
-import FamilyCalendarUI
 import SwiftUI
 
 /// Registering, or joining with the invite code the other person reads out.
 ///
 /// The one screen in the app that waits for the network, because it has nothing
 /// local to work from yet.
-struct SignInView: View {
+public struct SignInView: View {
     let database: AppDatabase
     let credentials: CredentialStore
     let onSignedIn: (AppEnvironment) -> Void
+
+    public init(
+        database: AppDatabase,
+        credentials: CredentialStore,
+        onSignedIn: @escaping (AppEnvironment) -> Void
+    ) {
+        self.database = database
+        self.credentials = credentials
+        self.onSignedIn = onSignedIn
+    }
 
     @State private var mode: Mode = .register
     @State private var email = ""
@@ -25,7 +34,7 @@ struct SignInView: View {
         case join = "Join one"
     }
 
-    var body: some View {
+    public var body: some View {
         NavigationStack {
             Form {
                 Picker("", selection: $mode) {
@@ -85,7 +94,7 @@ struct SignInView: View {
         problem = nil
         defer { isWorking = false }
 
-        let api = SyncAPI(baseURL: AppServer.url)
+        let api = SyncAPI(baseURL: ServerAddress.url)
         do {
             let session: SyncAPI.Session
             switch mode {
