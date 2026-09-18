@@ -14,6 +14,18 @@ public actor CredentialStore {
         public var userID: UUID
         public var householdID: UUID
         public var email: String
+
+        /// Written out because a public struct's memberwise initializer is
+        /// internal, so another module cannot call it. With `Codable` in the
+        /// mix Swift offers `init(from:)` instead, and the error that follows
+        /// talks about a missing `from` argument — which is a long way from
+        /// what is actually wrong.
+        public init(token: String, userID: UUID, householdID: UUID, email: String) {
+            self.token = token
+            self.userID = userID
+            self.householdID = householdID
+            self.email = email
+        }
     }
 
     private let service: String
