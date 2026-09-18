@@ -89,6 +89,7 @@ public final class TaskEditorViewModel {
                 if case .editing(let task) = self.mode {
                     group.addTask { await self.observeSubtasks(of: task.id) }
                 }
+                group.addTask { await self.observeTemplates() }
             }
         }
     }
@@ -105,6 +106,26 @@ public final class TaskEditorViewModel {
             }
         } catch {
             Log.database.error("category observation ended: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func observeTemplates() async {
+        do {
+            for try await value in environment.packingTemplates.observe() {
+                self.templates = value
+            }
+        } catch {
+            Log.database.error("template observation ended: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// One tap turns "swimming" into four subtasks.
+    public func apply(_ template: PackingTemplate) {
+        guard case .editing(let task) = mode else { return }
+        do {
+            try environment.subtasks.apply(template, to: task.id)
+        } catch {
+            Log.database.error("could not apply the list: \(error.localizedDescription, privacy: .public)")
         }
     }
 

@@ -24,6 +24,10 @@ extension AppDatabase {
             try db.execute(sql: schemaSQL(named: "v3_route_cache"))
         }
 
+        migrator.registerMigration("v4_activity_notified") { db in
+            try db.execute(sql: schemaSQL(named: "v4_activity_notified"))
+        }
+
         return migrator
     }
 

@@ -23,7 +23,7 @@ struct FamilyCalendarApp: App {
                     state = .ready(environment)
                 }
             case .ready(let environment):
-                DayView(environment: environment)
+                RootView(environment: environment)
             case .failed(let message):
                 ContentUnavailableView("Could not open the calendar", systemImage: "xmark.octagon", description: Text(message))
             }

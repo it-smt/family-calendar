@@ -125,6 +125,17 @@ public struct TaskEditorView: View {
                 Button("Add", action: model.addSubtask)
                     .disabled(model.newSubtaskTitle.trimmingCharacters(in: .whitespaces).isEmpty)
             }
+
+            if !model.templates.isEmpty {
+                Menu {
+                    ForEach(model.templates) { template in
+                        Button(template.name) { model.apply(template) }
+                    }
+                } label: {
+                    Label("Use a list", systemImage: "bag")
+                        .font(.subheadline)
+                }
+            }
         }
     }
 

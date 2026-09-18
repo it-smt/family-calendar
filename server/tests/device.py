@@ -28,6 +28,7 @@ SCHEMA_SQL = [
     CLIENT_ROOT / "SQL/v1_initial.sql",
     CLIENT_ROOT / "SQL/v2_superseded_edits.sql",
     CLIENT_ROOT / "SQL/v3_route_cache.sql",
+    CLIENT_ROOT / "SQL/v4_activity_notified.sql",
 ]
 APPLY_SQL = CLIENT_ROOT / "SQL/apply"
 SUPERSEDE_SQL = CLIENT_ROOT / "SQL/supersede"
@@ -245,6 +246,27 @@ class Device:
             {**values, "current_user_id": self.user_id},
         )
         self.db.execute(self._apply_statements[entity_type], values)
+
+    def delegated_work_to_report(self) -> list[dict[str, Any]]:
+        """Work this person asked for that the other one has finished.
+
+        Mirrors ActivityEntry.unreportedDelegatedWork.
+        """
+        rows = self.db.execute(
+            """
+            SELECT a.id, a.summary, a.actor_id, t.title, t.created_by
+            FROM activity_entries a
+            JOIN tasks t ON t.id = a.entity_id
+            WHERE a.notified = 0
+              AND a.action = 'completed'
+              AND a.entity_type = 'task'
+              AND a.actor_id <> :me
+              AND t.created_by = :me
+            ORDER BY a.created_at
+            """,
+            {"me": self.user_id},
+        )
+        return [dict(row) for row in rows]
 
     def superseded_edits(self, *, unnotified_only: bool = False) -> list[dict[str, Any]]:
         clause = " AND notified = 0" if unnotified_only else ""

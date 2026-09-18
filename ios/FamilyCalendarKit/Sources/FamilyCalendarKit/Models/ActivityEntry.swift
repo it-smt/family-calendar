@@ -19,6 +19,9 @@ public struct ActivityEntry: HouseholdScopedRecord {
     public var updatedBy: UUID?
     public var deletedAt: Date?
     public var dirty: Bool
+    /// Whether this person has been told. Device-only, like `dirty`: the two
+    /// phones are told about different things.
+    public var notified: Bool
 
     public init(
         id: UUID = UUID(),
@@ -32,7 +35,8 @@ public struct ActivityEntry: HouseholdScopedRecord {
         updatedAt: Date = Date(),
         updatedBy: UUID? = nil,
         deletedAt: Date? = nil,
-        dirty: Bool = false
+        dirty: Bool = false,
+        notified: Bool = false
     ) {
         self.id = id
         self.householdID = householdID
@@ -46,6 +50,7 @@ public struct ActivityEntry: HouseholdScopedRecord {
         self.updatedBy = updatedBy
         self.deletedAt = deletedAt
         self.dirty = dirty
+        self.notified = notified
     }
 
     public enum CodingKeys: String, CodingKey {
@@ -61,6 +66,7 @@ public struct ActivityEntry: HouseholdScopedRecord {
         case updatedBy = "updated_by"
         case deletedAt = "deleted_at"
         case dirty
+        case notified
     }
 }
 
@@ -73,5 +79,50 @@ extension ActivityEntry: TableRecord {
         public static let createdAt = Column(CodingKeys.createdAt)
         public static let entityType = Column(CodingKeys.entityType)
         public static let entityID = Column(CodingKeys.entityID)
+        public static let actorID = Column(CodingKeys.actorID)
+        public static let action = Column(CodingKeys.action)
+        public static let notified = Column(CodingKeys.notified)
+    }
+
+    /// Work this person asked for that somebody else has now finished.
+    ///
+    /// Delegation is only worth having if the person who asked finds out. The
+    /// feed already carries who did what to both phones, so this is a query
+    /// rather than a new mechanism: entries about a task this person created,
+    /// completed by the other one, that they have not been told about.
+    public static func unreportedDelegatedWork(
+        _ db: Database, currentUserID: UUID
+    ) throws -> [(entry: ActivityEntry, task: CalendarTask)] {
+        let entries = try ActivityEntry
+            .filter(Columns.notified == false)
+            .filter(Columns.action == "completed")
+            .filter(Columns.entityType == SyncEntity.task.rawValue)
+            .filter(Columns.actorID != currentUserID)
+            .order(Columns.createdAt)
+            .fetchAll(db)
+
+        return try entries.compactMap { entry in
+            guard
+                let task = try CalendarTask.fetchOne(db, key: entry.entityID),
+                task.createdBy == currentUserID
+            else {
+                return nil
+            }
+            return (entry, task)
+        }
+    }
+
+    public static func markNotified(_ entries: [ActivityEntry], in db: Database) throws {
+        guard !entries.isEmpty else { return }
+        let placeholders = entries.map { _ in "?" }.joined(separator: ", ")
+        try db.execute(
+            sql: "UPDATE activity_entries SET notified = 1 WHERE id IN (\(placeholders))",
+            arguments: StatementArguments(entries.map(\.id))
+        )
+    }
+
+    /// Everything the feed shows, newest first.
+    public static func feed(_ db: Database, limit: Int = 100) throws -> [ActivityEntry] {
+        try order(Columns.createdAt.desc).limit(limit).fetchAll(db)
     }
 }

@@ -16,6 +16,9 @@ public final class AppEnvironment {
     public let subtasks: SubtaskRepository
     public let categories: CategoryRepository
     public let supersededEdits: SupersededEditRepository
+    public let shopping: ShoppingRepository
+    public let packingTemplates: PackingTemplateRepository
+    public let activityFeed: ActivityFeedRepository
     public let currentUserID: UUID
     public let householdID: UUID
 
@@ -23,6 +26,7 @@ public final class AppEnvironment {
     private let monitor: NetworkMonitor
     private let notifications: NotificationScheduler
     private let leaveTime: LeaveTimeCoordinator
+    private let geofences: GeofenceMonitor
 
     public init(
         database: AppDatabase,
@@ -51,10 +55,15 @@ public final class AppEnvironment {
         let notifications = NotificationScheduler(database: database)
         self.notifications = notifications
 
+        let geofences = GeofenceMonitor(database: database)
+        self.geofences = geofences
+
         // A route that changed makes the alerts wrong, so measuring one ends in
-        // the same place a sync does: rebuild them.
-        self.leaveTime = LeaveTimeCoordinator(database: database) {
+        // the same place a sync does: rebuild them. Moving also changes which
+        // places are worth watching, and only twenty of them can be.
+        self.leaveTime = LeaveTimeCoordinator(database: database) { [weak geofences] in
             await notifications.rescheduleAll()
+            await geofences?.refreshFromDatabase()
             WidgetCenter.shared.reloadAllTimelines()
         }
 
@@ -86,6 +95,19 @@ public final class AppEnvironment {
             onLocalChange: requestSync
         )
         self.supersededEdits = SupersededEditRepository(database: database)
+        self.shopping = ShoppingRepository(
+            database: database,
+            householdID: householdID,
+            currentUserID: currentUserID,
+            onLocalChange: requestSync
+        )
+        self.packingTemplates = PackingTemplateRepository(
+            database: database,
+            householdID: householdID,
+            currentUserID: currentUserID,
+            onLocalChange: requestSync
+        )
+        self.activityFeed = ActivityFeedRepository(database: database)
     }
 
     /// Called at launch, and whenever the app comes back to the foreground.
@@ -100,6 +122,7 @@ public final class AppEnvironment {
             await engine.onChangesApplied {
                 await notifications.rescheduleAll()
                 await notifications.notifyAboutReplacedEdits()
+                await notifications.notifyAboutDelegatedWork(currentUserID: currentUserID)
                 WidgetCenter.shared.reloadAllTimelines()
             }
 
@@ -107,8 +130,10 @@ public final class AppEnvironment {
             await engine.schedule()
         }
 
-        Task { [leaveTime] in
+        Task { [leaveTime, geofences] in
             await leaveTime.start()
+            geofences.requestAuthorizationIfNeeded()
+            await geofences.refreshFromDatabase()
         }
     }
 

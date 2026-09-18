@@ -25,6 +25,7 @@ CLIENT_MIGRATIONS = [
     CLIENT_SOURCES / "Database/SQL/v1_initial.sql",
     CLIENT_SOURCES / "Database/SQL/v2_superseded_edits.sql",
     CLIENT_SOURCES / "Database/SQL/v3_route_cache.sql",
+    CLIENT_SOURCES / "Database/SQL/v4_activity_notified.sql",
 ]
 # Records live wherever they belong, not only in Models/, so the parser
 # looks through the whole package rather than one folder.
@@ -32,6 +33,14 @@ CLIENT_MODELS = CLIENT_SOURCES
 
 # The device carries an outbox flag; the server has no use for one.
 CLIENT_ONLY_COLUMNS = {"dirty"}
+
+#: Device-only columns on one table each, kept separate so a stray column
+#: somewhere else is still caught.
+EXTRA_CLIENT_COLUMNS = {
+    # Which feed entries this person has already been told about. The other
+    # phone keeps its own answer, because the two are told different things.
+    "activity_entries": {"notified"},
+}
 # The cursor source lives only on the server, the cursor value only on the device.
 # Credentials never reach a device: an email and a password hash copied onto
 # both phones, and into every change payload, would be a schema mistake.
@@ -101,7 +110,11 @@ async def test_the_same_columns_exist_on_both_sides(migrated_db, client_schema):
     server = await migrated_db.run_sync(columns)
     mismatches = {}
     for table, server_names in server.items():
-        client_names = set(client_columns(client_schema, table)) - CLIENT_ONLY_COLUMNS
+        client_names = (
+            set(client_columns(client_schema, table))
+            - CLIENT_ONLY_COLUMNS
+            - EXTRA_CLIENT_COLUMNS.get(table, set())
+        )
         if client_names != server_names:
             mismatches[table] = {
                 "only_on_server": sorted(server_names - client_names),

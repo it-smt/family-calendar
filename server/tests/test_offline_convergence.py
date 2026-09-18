@@ -539,3 +539,80 @@ async def test_a_rejected_push_also_produces_a_notice(api):
 
     alice.close()
     bob.close()
+
+
+async def test_the_person_who_asked_finds_out_it_is_done(api):
+    """Delegation without this is a label on a row.
+
+    The feed already carries who did what to both phones, so telling the author
+    needs no new data — only a way to remember who has been told. The two phones
+    keep that separately, because they are told about different things.
+    """
+    alice, bob = await household_of_two(api)
+
+    # Alice asks Bob to do something.
+    task_id = alice.create_task("Book the dentist", assignee_id=bob.user_id)
+    await alice.sync()
+    await bob.sync()
+
+    assert alice.delegated_work_to_report() == []
+
+    # Bob does it.
+    bob.update_task(task_id, completed_at=bob.now())
+    await bob.sync()
+    await alice.sync()
+
+    waiting = alice.delegated_work_to_report()
+    assert len(waiting) == 1
+    assert waiting[0]["title"] == "Book the dentist"
+    assert waiting[0]["actor_id"] == bob.user_id
+
+    # Bob asked for nothing, so Bob is told nothing.
+    assert bob.delegated_work_to_report() == []
+
+    alice.close()
+    bob.close()
+
+
+async def test_finishing_your_own_task_tells_nobody(api):
+    """An alert about something you just did yourself is only noise."""
+    alice, bob = await household_of_two(api)
+
+    task_id = alice.create_task("Buy milk")
+    await alice.sync()
+    alice.update_task(task_id, completed_at=alice.now())
+    await alice.sync()
+    await bob.sync()
+
+    assert alice.delegated_work_to_report() == []
+    # And Bob did not ask for it, so it is not his business either.
+    assert bob.delegated_work_to_report() == []
+
+    alice.close()
+    bob.close()
+
+
+async def test_being_told_once_is_enough(api):
+    """A later sync must not bring the same news back."""
+    alice, bob = await household_of_two(api)
+
+    task_id = alice.create_task("Book the dentist", assignee_id=bob.user_id)
+    await alice.sync()
+    await bob.sync()
+    bob.update_task(task_id, completed_at=bob.now())
+    await bob.sync()
+    await alice.sync()
+
+    reported = alice.delegated_work_to_report()
+    assert len(reported) == 1
+
+    alice.db.execute(
+        "UPDATE activity_entries SET notified = 1 WHERE id = ?", (reported[0]["id"],)
+    )
+    alice.db.commit()
+
+    await alice.sync()
+    assert alice.delegated_work_to_report() == []
+
+    alice.close()
+    bob.close()

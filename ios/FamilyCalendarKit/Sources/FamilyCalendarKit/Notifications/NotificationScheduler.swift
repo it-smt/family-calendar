@@ -133,6 +133,51 @@ public actor NotificationScheduler {
         }
     }
 
+    /// Tells the person who asked that the job is done.
+    ///
+    /// Delegation without this is just a label on a row. Delivered immediately,
+    /// like the replaced-edit notice, so it costs nothing against the pending
+    /// limit.
+    public func notifyAboutDelegatedWork(currentUserID: UUID) async {
+        let finished: [(entry: ActivityEntry, task: CalendarTask)]
+        do {
+            finished = try await database.writer.read { db in
+                try ActivityEntry.unreportedDelegatedWork(db, currentUserID: currentUserID)
+            }
+        } catch {
+            Log.database.error("could not read the feed: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+        guard !finished.isEmpty else { return }
+
+        let content = UNMutableNotificationContent()
+        content.sound = .default
+        content.threadIdentifier = "delegated"
+
+        if finished.count == 1 {
+            content.title = "Done"
+            content.body = "\(finished[0].task.title) — finished."
+        } else {
+            content.title = "\(finished.count) things you asked for are done"
+            content.body = finished.map(\.task.title).joined(separator: ", ")
+        }
+
+        do {
+            try await center.add(
+                UNNotificationRequest(
+                    identifier: "delegated-\(finished.map(\.entry.id.uuidString).joined(separator: "-"))",
+                    content: content,
+                    trigger: nil
+                )
+            )
+            try await database.writer.write { db in
+                try ActivityEntry.markNotified(finished.map(\.entry), in: db)
+            }
+        } catch {
+            Log.sync.error("could not deliver the notice: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     private func label(for field: String) -> String {
         switch field {
         case "title": "The title"

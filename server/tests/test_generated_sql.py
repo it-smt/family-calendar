@@ -28,6 +28,7 @@ CLIENT_MIGRATIONS = [
     CLIENT_SQL / "v1_initial.sql",
     CLIENT_SQL / "v2_superseded_edits.sql",
     CLIENT_SQL / "v3_route_cache.sql",
+    CLIENT_SQL / "v4_activity_notified.sql",
 ]
 
 
