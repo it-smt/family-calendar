@@ -24,7 +24,11 @@ from generate_client_sql import (  # noqa: E402
 )
 
 CLIENT_SQL = ROOT / "ios/FamilyCalendarKit/Sources/FamilyCalendarKit/Database/SQL"
-CLIENT_MIGRATIONS = [CLIENT_SQL / "v1_initial.sql", CLIENT_SQL / "v2_superseded_edits.sql"]
+CLIENT_MIGRATIONS = [
+    CLIENT_SQL / "v1_initial.sql",
+    CLIENT_SQL / "v2_superseded_edits.sql",
+    CLIENT_SQL / "v3_route_cache.sql",
+]
 
 
 def test_the_committed_files_are_what_the_generator_produces():

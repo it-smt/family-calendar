@@ -24,8 +24,11 @@ CLIENT_SOURCES = REPO_ROOT / "ios/FamilyCalendarKit/Sources/FamilyCalendarKit"
 CLIENT_MIGRATIONS = [
     CLIENT_SOURCES / "Database/SQL/v1_initial.sql",
     CLIENT_SOURCES / "Database/SQL/v2_superseded_edits.sql",
+    CLIENT_SOURCES / "Database/SQL/v3_route_cache.sql",
 ]
-CLIENT_MODELS = CLIENT_SOURCES / "Models"
+# Records live wherever they belong, not only in Models/, so the parser
+# looks through the whole package rather than one folder.
+CLIENT_MODELS = CLIENT_SOURCES
 
 # The device carries an outbox flag; the server has no use for one.
 CLIENT_ONLY_COLUMNS = {"dirty"}
@@ -34,7 +37,7 @@ CLIENT_ONLY_COLUMNS = {"dirty"}
 # both phones, and into every change payload, would be a schema mistake.
 SERVER_ONLY_TABLES = {"change_log", "alembic_version", "credentials"}
 # Device bookkeeping: the cursor, and the edits an arriving row replaced.
-CLIENT_ONLY_TABLES = {"sync_state", "superseded_edits", "sqlite_sequence"}
+CLIENT_ONLY_TABLES = {"sync_state", "superseded_edits", "route_cache", "sqlite_sequence"}
 
 # How a Postgres type has to be spelled in SQLite for a value to survive the
 # round trip without translation.
@@ -142,7 +145,7 @@ async def test_every_synced_client_table_has_a_dirty_flag(client_schema):
 def swift_records() -> dict[str, set[str]]:
     """Map each Swift record's table name to the column names it encodes."""
     records: dict[str, set[str]] = {}
-    for path in sorted(CLIENT_MODELS.glob("*.swift")):
+    for path in sorted(CLIENT_MODELS.rglob("*.swift")):
         source = path.read_text()
 
         # struct Name { ... enum CodingKeys ... }, and the table name declared

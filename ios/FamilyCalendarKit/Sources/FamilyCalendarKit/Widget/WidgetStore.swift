@@ -22,7 +22,7 @@ public struct WidgetStore: Sendable {
         let startOfDay = calendar.startOfDay(for: now)
         let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? startOfDay
 
-        let (tasks, categories, shopping, unsynced) = try database.reader.read { db in
+        let (tasks, categories, shopping, unsynced, origin) = try database.reader.read { db in
             let tasks = try CalendarTask
                 .filter(CalendarTask.Columns.deletedAt == nil)
                 .fetchAll(db)
@@ -36,8 +36,15 @@ public struct WidgetStore: Sendable {
                 .limit(8)
                 .fetchAll(db)
             let unsynced = try Outbox.collect(db, limit: Int.max).count
-            return (tasks, categories, shopping, unsynced)
+            let origin = try SyncState.current(db).origin
+            return (tasks, categories, shopping, unsynced, origin)
         }
+
+        // Read from the cache, never measured here: a widget that waited for
+        // MapKit would be a widget that often showed nothing at all.
+        let estimates = (try? database.reader.read { db in
+            try LeaveTimeCoordinator.estimates(db, origin: origin, now: now)
+        }) ?? [:]
 
         let colours = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0.colorHex) })
 
@@ -55,7 +62,10 @@ public struct WidgetStore: Sendable {
                         isCompleted: task.isCompleted,
                         assigneeID: task.assigneeID,
                         colorHex: task.categoryID.flatMap { colours[$0] },
-                        locationName: task.locationName
+                        locationName: task.locationName,
+                        leaveBy: estimates[task.id].map {
+                            Travel.leaveTime(for: occurrence, estimate: $0)
+                        }
                     )
                 )
             }

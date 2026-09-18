@@ -42,6 +42,7 @@ public enum NotificationPlan {
     public static func make(
         tasks: [CalendarTask],
         reminders: [UUID: [Reminder]],
+        estimates: [UUID: TravelEstimate] = [:],
         now: Date = Date(),
         limit: Int = limit,
         horizon: TimeInterval = horizon
@@ -60,7 +61,18 @@ public enum NotificationPlan {
                     // rationed separately.
                     guard reminder.kind != .geo else { continue }
 
-                    let fireAt = occurrence.addingTimeInterval(
+                    // A "leave now" reminder counts back from the door, not
+                    // from the appointment: its offset is how long before
+                    // leaving to be warned. Without an estimate it behaves like
+                    // an ordinary reminder rather than going silent.
+                    let anchor: Date
+                    if reminder.kind == .leaveTime, let estimate = estimates[task.id] {
+                        anchor = Travel.leaveTime(for: occurrence, estimate: estimate)
+                    } else {
+                        anchor = occurrence
+                    }
+
+                    let fireAt = anchor.addingTimeInterval(
                         TimeInterval(reminder.offsetMinutes) * 60
                     )
                     guard fireAt > now else { continue }
@@ -72,7 +84,12 @@ public enum NotificationPlan {
                             occurrence: occurrence,
                             fireAt: fireAt,
                             title: task.title,
-                            body: body(for: task, occurrence: occurrence, reminder: reminder)
+                            body: body(
+                                for: task,
+                                occurrence: occurrence,
+                                reminder: reminder,
+                                estimate: estimates[task.id]
+                            )
                         )
                     )
                 }
@@ -87,16 +104,32 @@ public enum NotificationPlan {
         return Array(planned.prefix(limit))
     }
 
-    static func body(for task: CalendarTask, occurrence: Date, reminder: Reminder) -> String {
-        var parts: [String] = [occurrence.formatted(date: .omitted, time: .shortened)]
+    static func body(
+        for task: CalendarTask,
+        occurrence: Date,
+        reminder: Reminder,
+        estimate: TravelEstimate?
+    ) -> String {
+        var parts: [String] = []
+
+        if reminder.kind == .leaveTime, let estimate {
+            // What a person actually needs to know is not "in 30 minutes" but
+            // "leave at 15:35, the journey is 25 minutes". The first is a
+            // countdown to the wrong thing.
+            let leaveAt = Travel.leaveTime(for: occurrence, estimate: estimate)
+            let minutes = Int((estimate.duration / 60).rounded())
+            parts.append("Leave \(leaveAt.formatted(date: .omitted, time: .shortened))")
+            parts.append(
+                estimate.isApproximate
+                    ? "about \(minutes) min"
+                    : "\(minutes) min with traffic"
+            )
+        } else {
+            parts.append(occurrence.formatted(date: .omitted, time: .shortened))
+        }
+
         if let place = task.locationName, !place.isEmpty {
             parts.append(place)
-        }
-        if reminder.kind == .leaveTime {
-            // Stage 8 replaces this with a real travel time. Until then the
-            // offset is taken at face value, which is what a plain reminder
-            // would have done anyway.
-            parts.append("time to go")
         }
         return parts.joined(separator: " · ")
     }

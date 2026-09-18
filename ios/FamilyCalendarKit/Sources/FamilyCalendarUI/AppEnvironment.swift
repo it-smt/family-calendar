@@ -22,6 +22,7 @@ public final class AppEnvironment {
     private let engine: SyncEngine
     private let monitor: NetworkMonitor
     private let notifications: NotificationScheduler
+    private let leaveTime: LeaveTimeCoordinator
 
     public init(
         database: AppDatabase,
@@ -49,6 +50,13 @@ public final class AppEnvironment {
 
         let notifications = NotificationScheduler(database: database)
         self.notifications = notifications
+
+        // A route that changed makes the alerts wrong, so measuring one ends in
+        // the same place a sync does: rebuild them.
+        self.leaveTime = LeaveTimeCoordinator(database: database) {
+            await notifications.rescheduleAll()
+            WidgetCenter.shared.reloadAllTimelines()
+        }
 
         // Every local write asks for a sync and reschedules the alerts, then
         // returns. Neither waits for anything.
@@ -97,6 +105,10 @@ public final class AppEnvironment {
 
             await notifications.rescheduleAll()
             await engine.schedule()
+        }
+
+        Task { [leaveTime] in
+            await leaveTime.start()
         }
     }
 

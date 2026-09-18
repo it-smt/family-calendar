@@ -13,17 +13,36 @@ public struct SyncState: Codable, FetchableRecord, PersistableRecord, Sendable {
     public var id: Int
     public var pullCursor: Int64
     public var lastSyncedAt: Date?
+    /// Where the phone was last seen, so the widget can work out when to leave
+    /// without a location permission of its own.
+    public var lastLatitude: Double?
+    public var lastLongitude: Double?
 
-    public init(id: Int = SyncState.singletonID, pullCursor: Int64 = 0, lastSyncedAt: Date? = nil) {
+    public init(
+        id: Int = SyncState.singletonID,
+        pullCursor: Int64 = 0,
+        lastSyncedAt: Date? = nil,
+        lastLatitude: Double? = nil,
+        lastLongitude: Double? = nil
+    ) {
         self.id = id
         self.pullCursor = pullCursor
         self.lastSyncedAt = lastSyncedAt
+        self.lastLatitude = lastLatitude
+        self.lastLongitude = lastLongitude
+    }
+
+    public var origin: GeoPoint? {
+        guard let lastLatitude, let lastLongitude else { return nil }
+        return GeoPoint(latitude: lastLatitude, longitude: lastLongitude)
     }
 
     public enum CodingKeys: String, CodingKey {
         case id
         case pullCursor = "pull_cursor"
         case lastSyncedAt = "last_synced_at"
+        case lastLatitude = "last_latitude"
+        case lastLongitude = "last_longitude"
     }
 
     public static var databaseDateEncodingStrategy: DatabaseDateEncodingStrategy {
@@ -56,6 +75,13 @@ extension SyncState {
         try db.execute(
             sql: "UPDATE sync_state SET pull_cursor = MAX(pull_cursor, ?) WHERE id = ?",
             arguments: [cursor, singletonID]
+        )
+    }
+
+    public static func setOrigin(_ origin: GeoPoint, in db: Database) throws {
+        try db.execute(
+            sql: "UPDATE sync_state SET last_latitude = ?, last_longitude = ? WHERE id = ?",
+            arguments: [origin.latitude, origin.longitude, singletonID]
         )
     }
 

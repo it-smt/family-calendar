@@ -130,3 +130,66 @@ def test_one_task_with_several_reminders_gets_one_alert_each():
     assert [item.reminder_id for item in plan] == ["hour-before", "at-the-time"]
     # The day-before one already passed, so it is not scheduled.
     assert all(item.fire_at > NOW for item in plan)
+
+
+# --- leave-time reminders --------------------------------------------------
+
+from tests.travel_transcription import TravelEstimate  # noqa: E402
+
+
+def estimate(minutes: float, source: str = "cached") -> TravelEstimate:
+    return TravelEstimate(
+        duration=minutes * 60, distance=8000, source=source, measured_at=NOW
+    )
+
+
+def test_a_leave_time_reminder_counts_back_from_the_door():
+    """Not from the appointment: the journey is what the person has to allow for."""
+    tasks = [task("clinic", 3)]
+    reminders = {"clinic": [reminder("r", "clinic", offset=0, kind="leave_time")]}
+
+    plan = make(tasks, reminders, now=NOW, estimates={"clinic": estimate(25)})
+
+    appointment = NOW + timedelta(hours=3)
+    assert plan[0].fire_at == appointment - timedelta(minutes=25) - timedelta(minutes=5)
+
+
+def test_being_warned_before_leaving_shifts_the_alert_earlier_still():
+    tasks = [task("clinic", 3)]
+    reminders = {"clinic": [reminder("r", "clinic", offset=-10, kind="leave_time")]}
+
+    plan = make(tasks, reminders, now=NOW, estimates={"clinic": estimate(25)})
+
+    appointment = NOW + timedelta(hours=3)
+    assert plan[0].fire_at == appointment - timedelta(minutes=25 + 5 + 10)
+
+
+def test_a_longer_journey_rings_earlier():
+    tasks = [task("clinic", 3)]
+    reminders = {"clinic": [reminder("r", "clinic", offset=0, kind="leave_time")]}
+
+    near = make(tasks, reminders, now=NOW, estimates={"clinic": estimate(10)})
+    far = make(tasks, reminders, now=NOW, estimates={"clinic": estimate(45)})
+
+    assert far[0].fire_at < near[0].fire_at
+
+
+def test_without_an_estimate_it_still_rings():
+    """No route, no location, no network — silence would be the worst answer."""
+    tasks = [task("clinic", 3)]
+    reminders = {"clinic": [reminder("r", "clinic", offset=-30, kind="leave_time")]}
+
+    plan = make(tasks, reminders, now=NOW, estimates={})
+
+    assert len(plan) == 1
+    assert plan[0].fire_at == NOW + timedelta(hours=3) - timedelta(minutes=30)
+
+
+def test_an_estimate_that_puts_leaving_in_the_past_schedules_nothing():
+    """The moment has gone; ringing about it would only be noise."""
+    tasks = [task("clinic", 0.2)]
+    reminders = {"clinic": [reminder("r", "clinic", offset=0, kind="leave_time")]}
+
+    plan = make(tasks, reminders, now=NOW, estimates={"clinic": estimate(30)})
+
+    assert plan == []

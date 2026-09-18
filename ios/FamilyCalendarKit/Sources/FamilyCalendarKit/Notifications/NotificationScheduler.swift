@@ -34,8 +34,19 @@ public actor NotificationScheduler {
         do {
             plan = try await database.writer.read { db in
                 let loaded = try NotificationPlan.load(db)
+                // Where the phone was last seen, read from the database like
+                // everything else. Absent is fine: a leave-time reminder with no
+                // estimate behaves like an ordinary one rather than going silent.
+                let origin = try SyncState.current(db).origin
+                // Read from the route cache only. Measuring a journey here
+                // would make the alerts wait for MapKit, which is exactly the
+                // dependency this application refuses to have.
+                let estimates = try LeaveTimeCoordinator.estimates(db, origin: origin, now: now)
                 return NotificationPlan.make(
-                    tasks: loaded.tasks, reminders: loaded.reminders, now: now
+                    tasks: loaded.tasks,
+                    reminders: loaded.reminders,
+                    estimates: estimates,
+                    now: now
                 )
             }
         } catch {

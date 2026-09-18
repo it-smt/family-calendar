@@ -20,6 +20,10 @@ extension AppDatabase {
             try db.execute(sql: schemaSQL(named: "v2_superseded_edits"))
         }
 
+        migrator.registerMigration("v3_route_cache") { db in
+            try db.execute(sql: schemaSQL(named: "v3_route_cache"))
+        }
+
         return migrator
     }
 

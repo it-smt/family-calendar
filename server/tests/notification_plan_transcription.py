@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from tests.recurrence_transcription import RecurrenceRule, expand
+from tests.travel_transcription import leave_time
 
 LIMIT = 50
 HORIZON = timedelta(days=60)
@@ -63,9 +64,11 @@ def make(
     tasks: list[Task],
     reminders: dict[str, list[Reminder]],
     now: datetime,
+    estimates: dict | None = None,
     limit: int = LIMIT,
     horizon: timedelta = HORIZON,
 ) -> list[Planned]:
+    estimates = estimates or {}
     window = (now, now + horizon)
     planned: list[Planned] = []
 
@@ -80,7 +83,16 @@ def make(
             for reminder in task_reminders:
                 if reminder.deleted or reminder.kind == "geo":
                     continue
-                fire_at = occurrence + timedelta(minutes=reminder.offset_minutes)
+                # A "leave now" reminder counts back from the door, not from
+                # the appointment. Without an estimate it behaves like an
+                # ordinary reminder rather than going silent.
+                estimate = estimates.get(task.id)
+                if reminder.kind == "leave_time" and estimate is not None:
+                    anchor = leave_time(occurrence, estimate)
+                else:
+                    anchor = occurrence
+
+                fire_at = anchor + timedelta(minutes=reminder.offset_minutes)
                 if fire_at <= now:
                     continue
                 planned.append(Planned(task.id, reminder.id, occurrence, fire_at))

@@ -24,6 +24,7 @@ The two sources of truth for the schema itself:
 | `credentials` exists only on the server | The `users` table is copied to every device; an email and a password hash must not ride along with it. |
 | `sync_state` exists only on the device | One row, holding the cursor the device has reached. Never pushed. |
 | `superseded_edits` exists only on the device | An edit of this person's that an arriving row replaced, kept so the loss is not silent. |
+| `route_cache` exists only on the device | A route is measured from where *this* phone is; the other phone is somewhere else. |
 | Enums are native types on the server, `TEXT` + `CHECK` on the device | Same string values on both sides. |
 | The server has no CHECK constraints | A constraint the client can violate would reject a push the device has already committed locally, and the device would retry it forever. Cross-field rules belong on the device, before the row is written. |
 | The device has CHECK constraints | It may constrain its own writes freely — a rejection there is a bug caught at the source. |

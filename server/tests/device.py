@@ -24,7 +24,11 @@ CLIENT_ROOT = (
     pathlib.Path(__file__).resolve().parents[2]
     / "ios/FamilyCalendarKit/Sources/FamilyCalendarKit/Database"
 )
-SCHEMA_SQL = [CLIENT_ROOT / "SQL/v1_initial.sql", CLIENT_ROOT / "SQL/v2_superseded_edits.sql"]
+SCHEMA_SQL = [
+    CLIENT_ROOT / "SQL/v1_initial.sql",
+    CLIENT_ROOT / "SQL/v2_superseded_edits.sql",
+    CLIENT_ROOT / "SQL/v3_route_cache.sql",
+]
 APPLY_SQL = CLIENT_ROOT / "SQL/apply"
 SUPERSEDE_SQL = CLIENT_ROOT / "SQL/supersede"
 
