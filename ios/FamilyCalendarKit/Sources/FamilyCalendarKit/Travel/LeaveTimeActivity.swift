@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 #if canImport(ActivityKit)
 import ActivityKit
 #endif

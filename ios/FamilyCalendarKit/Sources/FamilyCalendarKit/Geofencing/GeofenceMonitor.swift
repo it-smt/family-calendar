@@ -1,6 +1,7 @@
 import CoreLocation
 import Foundation
 import GRDB
+import OSLog
 import UserNotifications
 
 /// Watches the chosen places and rings when one is crossed.

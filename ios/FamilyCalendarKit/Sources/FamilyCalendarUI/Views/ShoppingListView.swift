@@ -1,4 +1,5 @@
 import FamilyCalendarKit
+import OSLog
 import SwiftUI
 
 /// The shopping list. Quick to add to, because that is the only thing anyone

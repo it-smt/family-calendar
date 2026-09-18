@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 /// Registering for background wake-ups, and handling one.
 ///

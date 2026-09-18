@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import OSLog
 #if canImport(MapKit)
 import MapKit
 #endif

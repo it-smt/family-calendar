@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import OSLog
 
 /// Drives the protocol: push what is ours, then pull what is theirs.
 ///

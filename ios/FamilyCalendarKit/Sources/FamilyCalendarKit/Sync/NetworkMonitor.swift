@@ -1,5 +1,7 @@
 import Foundation
 import Network
+import OSLog
+// OSAllocatedUnfairLock lives in `os`, which `OSLog` does not bring with it.
 import os
 
 /// Watches for the network coming back.

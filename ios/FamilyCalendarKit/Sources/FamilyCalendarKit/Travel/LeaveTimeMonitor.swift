@@ -1,5 +1,6 @@
 import CoreLocation
 import Foundation
+import OSLog
 
 /// Watches where the phone is, so the journey is measured from there.
 ///

@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import Security
 
 /// Holds the session, and knows how to get a new one without asking.
