@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: fc
+      POSTGRES_PASSWORD: fc
+      POSTGRES_DB: family_calendar
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fc -d family_calendar"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      FC_DATABASE_URL: postgresql+asyncpg://fc:fc@db:5432/family_calendar
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/srv/app
+      - ./alembic:/srv/alembic
+
+volumes:
+  pgdata:
