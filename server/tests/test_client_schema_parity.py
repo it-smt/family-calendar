@@ -257,3 +257,29 @@ async def test_a_pulled_change_inserts_into_the_device_database_unchanged(
     assert stored[7] == 0
 
     client_schema.rollback()
+
+
+def swift_entity_tables() -> dict[str, str]:
+    """The entity-to-table map the Swift sync layer uses, read out of the source."""
+    source = (CLIENT_SOURCES / "Sync/SyncEntity.swift").read_text()
+    body = re.search(r"public var tableName: String \{(.*?)\n    \}", source, re.DOTALL)
+    assert body, "SyncEntity.tableName moved; the parser needs updating"
+
+    cases = dict(re.findall(r'case \.(\w+): "(\w+)"', body.group(1)))
+    # Map the Swift case names back to the wire names they carry.
+    wire = dict(re.findall(r'case (\w+)(?: = "(\w+)")?\n', source))
+    return {wire.get(name) or name: table for name, table in cases.items()}
+
+
+def test_the_swift_sync_layer_names_the_right_tables(client_schema):
+    """A typo here would compile and then quietly sync nothing."""
+    mapped = swift_entity_tables()
+    tables = client_tables(client_schema) - CLIENT_ONLY_TABLES
+
+    assert set(mapped.values()) == tables
+
+
+def test_the_swift_entity_types_match_the_servers():
+    from app.sync.registry import ENTITY_TYPES
+
+    assert set(swift_entity_tables()) == set(ENTITY_TYPES)

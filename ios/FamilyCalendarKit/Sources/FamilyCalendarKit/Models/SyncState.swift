@@ -43,3 +43,26 @@ public struct SyncState: Codable, FetchableRecord, PersistableRecord, Sendable {
         public static let lastSyncedAt = Column(CodingKeys.lastSyncedAt)
     }
 }
+
+extension SyncState {
+    /// The single row. Created by the v1 migration, so it is always there.
+    public static func current(_ db: Database) throws -> SyncState {
+        try fetchOne(db, key: singletonID) ?? SyncState()
+    }
+
+    /// Moves the cursor forward, never back: a page that arrives out of order
+    /// must not rewind what has already been applied.
+    public static func setCursor(_ cursor: Int64, in db: Database) throws {
+        try db.execute(
+            sql: "UPDATE sync_state SET pull_cursor = MAX(pull_cursor, ?) WHERE id = ?",
+            arguments: [cursor, singletonID]
+        )
+    }
+
+    public static func setLastSynced(_ date: Date, in db: Database) throws {
+        try db.execute(
+            sql: "UPDATE sync_state SET last_synced_at = ? WHERE id = ?",
+            arguments: [Timestamp.string(from: date), singletonID]
+        )
+    }
+}

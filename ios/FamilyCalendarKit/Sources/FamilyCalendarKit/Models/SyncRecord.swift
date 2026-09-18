@@ -5,7 +5,7 @@ import GRDB
 ///
 /// `dirty` is the outbox: a row written locally is dirty until the server has
 /// acknowledged it. Nothing in the UI ever waits for that to happen.
-public protocol SyncRecord: Codable, FetchableRecord, MutablePersistableRecord, Identifiable, Sendable {
+public protocol SyncRecord: Codable, FetchableRecord, PersistableRecord, Identifiable, Sendable {
     var id: UUID { get }
     var createdAt: Date { get set }
     var updatedAt: Date { get set }
@@ -36,9 +36,10 @@ extension SyncRecord {
     public var isDeleted: Bool { deletedAt != nil }
 
     /// Marks a local edit. Every write from the UI goes through this, so no code
-    /// path can forget to queue the row for the next push.
+    /// path can forget to queue the row for the next push — and no two versions
+    /// of a row can end up sharing a version stamp.
     public mutating func touch(by userID: UUID?, at date: Date = Date()) {
-        updatedAt = date
+        updatedAt = Timestamp.strictlyAfter(updatedAt, now: date)
         updatedBy = userID
         dirty = true
     }

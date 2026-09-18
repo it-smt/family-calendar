@@ -9,6 +9,11 @@ Validation is strict about two things and lenient about everything else: an
 unknown column is rejected, because it means the device and the server disagree
 about the schema; and a column the device did not send is simply not written,
 so a partial payload updates only what it carries.
+
+`created_at` comes from the device, like `id` does. The device made the row and
+knows when; taking the server's arrival time instead would leave the two phones
+disagreeing about when the same task was created. The upsert never changes it
+afterwards.
 """
 
 from __future__ import annotations
@@ -21,9 +26,6 @@ from sqlalchemy import Column, Table
 from sqlalchemy.dialects.postgresql import JSONB
 
 from app.sync.registry import SPECS_BY_TYPE
-
-#: Columns the server owns. A device may send them; they are ignored.
-SERVER_OWNED = frozenset({"created_at"})
 
 #: The server fills these in from the caller's identity, so a payload need not
 #: carry them — and if it does, the value is replaced.
@@ -60,11 +62,7 @@ def _field(column: Column) -> tuple[Any, Any]:
 
 
 def _model_for_table(table: Table, name: str) -> type[BaseModel]:
-    fields = {
-        column.name: _field(column)
-        for column in table.columns
-        if column.name not in SERVER_OWNED
-    }
+    fields = {column.name: _field(column) for column in table.columns}
     return create_model(
         name,
         __config__=ConfigDict(extra="forbid", str_strip_whitespace=False),
@@ -83,4 +81,4 @@ def validate_payload(entity_type: str, payload: dict[str, Any]) -> dict[str, Any
     """Validated column values, holding only the columns the device actually sent."""
     model = payload_model(entity_type)
     validated = model.model_validate(payload)
-    return validated.model_dump(exclude_unset=True, exclude=set(SERVER_OWNED))
+    return validated.model_dump(exclude_unset=True)

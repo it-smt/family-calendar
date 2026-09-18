@@ -23,7 +23,11 @@ extension AppDatabase {
     /// same text can be checked against the Postgres schema by the server's
     /// parity test.
     static func schemaSQL(named name: String) throws -> String {
-        guard let url = Bundle.module.url(forResource: name, withExtension: "sql") else {
+        guard
+            let url = Bundle.module.url(
+                forResource: name, withExtension: "sql", subdirectory: "SQL"
+            )
+        else {
             throw DatabaseError.schemaResourceMissing(name)
         }
         return try String(contentsOf: url, encoding: .utf8)

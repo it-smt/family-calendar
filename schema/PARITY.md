@@ -58,6 +58,33 @@ it is the scope, so it does not point at one.
 `id` is generated on the device. Nothing in either schema autoincrements except
 `change_log.seq`, which is the one value only the server may assign.
 
+## Conflict resolution runs on both sides
+
+The device resolves conflicts too. A row arriving from a pull can be older than
+an edit made offline and not yet pushed, and applying it blindly would lose that
+edit. The rules are the same as the server's, and the SQL that implements them
+is generated rather than written twice:
+
+```sh
+python tools/generate_client_sql.py   # -> Database/SQL/apply/*.sql
+```
+
+The Swift client ships those files as resources and executes them verbatim; the
+protocol tests execute the same files against a real SQLite. `server/tests/
+test_generated_sql.py` fails if the committed text stops matching the generator.
+
+Two consequences worth knowing:
+
+* **Timestamps compare as text.** That is only correct while every timestamp has
+  the one fixed shape — RFC 3339, UTC, milliseconds. A value written without
+  milliseconds would sort after one with them and invert last-write-wins, which
+  is why `Timestamp.swift` has a single writer.
+* **A version stamp must be strictly greater than the one it replaces.** Two
+  edits in the same millisecond produce the same stamp, and two versions that
+  compare equal are one version as far as last-write-wins is concerned: once the
+  first is pushed, the second is dropped by the server and marked clean locally.
+  `Timestamp.strictlyAfter` is what prevents that.
+
 ## Naming
 
 Columns are `snake_case` on both sides; the Swift records map them through

@@ -14,7 +14,7 @@ let package = Package(
         .target(
             name: "FamilyCalendarKit",
             dependencies: [.product(name: "GRDB", package: "GRDB.swift")],
-            resources: [.process("Database/SQL")],
+            resources: [.copy("Database/SQL")],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(
