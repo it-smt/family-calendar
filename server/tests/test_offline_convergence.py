@@ -8,6 +8,7 @@ edit.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 
 import pytest
@@ -356,6 +357,148 @@ async def test_a_second_edit_in_the_same_millisecond_is_not_swallowed(api):
     assert alice.task(task_id)["title"] == "Second edit"
     assert bob.task(task_id)["title"] == "Second edit"
     assert alice.dirty_count() == 0
+
+    alice.close()
+    bob.close()
+
+
+async def test_both_edit_the_same_task_offline_and_reconnect_together(api):
+    """What last-write-wins costs, written down.
+
+    Two people edit different fields of one task while offline, and the network
+    comes back for both at once. The rule compares whole rows, so the later
+    stamp wins outright and takes the other person's field with it — the loser
+    did not lose an older value, they lost a field the winner never touched.
+
+    This is the protocol the spec asks for, and the test exists so the
+    behaviour cannot change by accident. `superseded_edits` is what keeps it
+    from being silent.
+    """
+    alice, bob = await household_of_two(api)
+
+    task_id = alice.create_task("Doctor", starts_at="2026-09-20T14:00:00.000Z")
+    await alice.sync()
+    await bob.sync()
+
+    # Offline, at the same time: she moves it, he renames it.
+    alice.update_task(task_id, starts_at="2026-09-20T16:00:00.000Z")
+    bob.clock = skewed_clock(timedelta(seconds=30))
+    bob.update_task(task_id, title="Doctor — bring the card")
+
+    # Both come back at once.
+    await asyncio.gather(alice.sync(), bob.sync())
+    await asyncio.gather(alice.sync(), bob.sync())
+
+    # Bob's stamp is later, so Bob's whole row won.
+    for device in (alice, bob):
+        assert device.task(task_id)["title"] == "Doctor — bring the card"
+        assert device.task(task_id)["starts_at"] == "2026-09-20T14:00:00.000Z"
+
+    # And both phones agree, which is the part that matters most.
+    assert alice.task(task_id) == bob.task(task_id) or (
+        alice.task(task_id)["updated_at"] == bob.task(task_id)["updated_at"]
+    )
+    assert alice.dirty_count() == 0
+    assert bob.dirty_count() == 0
+
+    alice.close()
+    bob.close()
+
+
+async def test_a_replaced_edit_is_kept_so_it_can_be_shown(api):
+    """Losing to last-write-wins is allowed. Losing silently is not."""
+    alice, bob = await household_of_two(api)
+
+    task_id = alice.create_task("Doctor", starts_at="2026-09-20T14:00:00.000Z")
+    await alice.sync()
+    await bob.sync()
+
+    alice.update_task(task_id, starts_at="2026-09-20T16:00:00.000Z")
+    bob.clock = skewed_clock(timedelta(seconds=30))
+    bob.update_task(task_id, title="Doctor — bring the card")
+
+    await asyncio.gather(alice.sync(), bob.sync())
+    await asyncio.gather(alice.sync(), bob.sync())
+
+    notices = alice.superseded_edits()
+    assert len(notices) == 1
+    notice = notices[0]
+    assert notice["entity_id"] == task_id
+    assert notice["actor_id"] == bob.user_id
+    # What she had, and what replaced it — enough to show "was 16:00, now 14:00".
+    assert notice["mine"]["starts_at"] == "2026-09-20T16:00:00.000Z"
+    assert notice["theirs"]["starts_at"] == "2026-09-20T14:00:00.000Z"
+
+    # Bob lost nothing, so Bob is told nothing.
+    assert bob.superseded_edits() == []
+
+    alice.close()
+    bob.close()
+
+
+async def test_restoring_a_replaced_edit_is_an_ordinary_write(api):
+    """Putting it back needs no special path: it is just a newer edit."""
+    alice, bob = await household_of_two(api)
+
+    task_id = alice.create_task("Doctor", starts_at="2026-09-20T14:00:00.000Z")
+    await alice.sync()
+    await bob.sync()
+
+    alice.update_task(task_id, starts_at="2026-09-20T16:00:00.000Z")
+    bob.clock = skewed_clock(timedelta(seconds=30))
+    bob.update_task(task_id, title="Doctor — bring the card")
+    await asyncio.gather(alice.sync(), bob.sync())
+    await asyncio.gather(alice.sync(), bob.sync())
+
+    notice = alice.superseded_edits()[0]
+    alice.clock = skewed_clock(timedelta(minutes=1))
+    alice.update_task(task_id, starts_at=notice["mine"]["starts_at"])
+    await alice.sync()
+    await bob.sync()
+
+    # Her time is back, and his title survived.
+    for device in (alice, bob):
+        assert device.task(task_id)["starts_at"] == "2026-09-20T16:00:00.000Z"
+        assert device.task(task_id)["title"] == "Doctor — bring the card"
+
+    alice.close()
+    bob.close()
+
+
+async def test_an_ordinary_change_from_the_partner_raises_no_notice(api):
+    """Only work that was replaced counts, not every change that arrives."""
+    alice, bob = await household_of_two(api)
+
+    task_id = bob.create_task("Bob's errand")
+    await bob.sync()
+    await alice.sync()
+
+    bob.update_task(task_id, title="Bob's errand, renamed")
+    await bob.sync()
+    await alice.sync()
+
+    # Alice never wrote to that row, so nothing of hers was replaced.
+    assert alice.superseded_edits() == []
+
+    alice.close()
+    bob.close()
+
+
+async def test_an_edit_that_changes_nothing_raises_no_notice(api):
+    """A row arriving with the same values is not a lost edit."""
+    alice, bob = await household_of_two(api)
+
+    task_id = alice.create_task("Doctor")
+    await alice.sync()
+    await bob.sync()
+
+    # Bob touches the row without changing anything a person would notice.
+    bob.clock = skewed_clock(timedelta(seconds=30))
+    bob.update_task(task_id, title="Doctor")
+    await bob.sync()
+    await alice.sync()
+
+    assert alice.superseded_edits() == []
 
     alice.close()
     bob.close()

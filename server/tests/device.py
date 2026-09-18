@@ -24,8 +24,9 @@ CLIENT_ROOT = (
     pathlib.Path(__file__).resolve().parents[2]
     / "ios/FamilyCalendarKit/Sources/FamilyCalendarKit/Database"
 )
-SCHEMA_SQL = CLIENT_ROOT / "SQL/v1_initial.sql"
+SCHEMA_SQL = [CLIENT_ROOT / "SQL/v1_initial.sql", CLIENT_ROOT / "SQL/v2_superseded_edits.sql"]
 APPLY_SQL = CLIENT_ROOT / "SQL/apply"
+SUPERSEDE_SQL = CLIENT_ROOT / "SQL/supersede"
 
 #: Tables the device may push, in the order dependencies want.
 OUTBOX_ORDER = [
@@ -87,9 +88,13 @@ class Device:
         self.db = sqlite3.connect(":memory:")
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA foreign_keys = ON")
-        self.db.executescript(SCHEMA_SQL.read_text())
+        for migration in SCHEMA_SQL:
+            self.db.executescript(migration.read_text())
         self._apply_statements = {
             path.stem: path.read_text() for path in APPLY_SQL.glob("*.sql")
+        }
+        self._supersede_statements = {
+            path.stem: path.read_text() for path in SUPERSEDE_SQL.glob("*.sql")
         }
 
     def close(self) -> None:
@@ -225,12 +230,26 @@ class Device:
         return await self.send(outbox)
 
     def apply(self, entity_type: str, payload: dict[str, Any]) -> None:
-        statement = self._apply_statements[entity_type]
         values = {
             key: (json.dumps(value) if key in JSON_COLUMNS else value)
             for key, value in payload.items()
         }
-        self.db.execute(statement, values)
+        # Before the row is replaced, keep whatever this person wrote into it.
+        # Nothing is lost silently; the app offers to put it back.
+        self.db.execute(
+            self._supersede_statements[entity_type],
+            {**values, "current_user_id": self.user_id},
+        )
+        self.db.execute(self._apply_statements[entity_type], values)
+
+    def superseded_edits(self) -> list[dict[str, Any]]:
+        rows = self.db.execute(
+            "SELECT * FROM superseded_edits WHERE dismissed = 0 ORDER BY id"
+        )
+        return [
+            {**dict(row), "mine": json.loads(row["mine"]), "theirs": json.loads(row["theirs"])}
+            for row in rows
+        ]
 
     async def pull(self, limit: int = 500) -> int:
         """Walk the pages until there are none left. Returns how many arrived."""

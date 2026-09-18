@@ -23,6 +23,7 @@ The two sources of truth for the schema itself:
 | `change_log` exists only on the server | It is where the pull cursor comes from. |
 | `credentials` exists only on the server | The `users` table is copied to every device; an email and a password hash must not ride along with it. |
 | `sync_state` exists only on the device | One row, holding the cursor the device has reached. Never pushed. |
+| `superseded_edits` exists only on the device | An edit of this person's that an arriving row replaced, kept so the loss is not silent. |
 | Enums are native types on the server, `TEXT` + `CHECK` on the device | Same string values on both sides. |
 | The server has no CHECK constraints | A constraint the client can violate would reject a push the device has already committed locally, and the device would retry it forever. Cross-field rules belong on the device, before the row is written. |
 | The device has CHECK constraints | It may constrain its own writes freely — a rejection there is a bug caught at the source. |
@@ -79,6 +80,13 @@ Two consequences worth knowing:
   the one fixed shape — RFC 3339, UTC, milliseconds. A value written without
   milliseconds would sort after one with them and invert last-write-wins, which
   is why `Timestamp.swift` has a single writer.
+* **A replaced edit is kept, not dropped.** Last-write-wins compares whole rows,
+  so when two people edit one task offline the later stamp takes the other's
+  field with it — a field the winner never touched. Changing that means
+  per-column versions or a CRDT, which is a different application. Instead
+  `supersede/*.sql` runs just before `apply/*.sql` and keeps the version it is
+  about to lose, so the app can show what was replaced and offer to put it back.
+  Restoring is an ordinary local edit and wins the same way anything else does.
 * **A version stamp must be strictly greater than the one it replaces.** Two
   edits in the same millisecond produce the same stamp, and two versions that
   compare equal are one version as far as last-write-wins is concerned: once the

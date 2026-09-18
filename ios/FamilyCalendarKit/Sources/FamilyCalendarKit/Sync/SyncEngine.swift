@@ -39,6 +39,7 @@ public actor SyncEngine {
         api: SyncAPI,
         credentials: CredentialStore,
         status: SyncStatus,
+        currentUserID: UUID,
         configuration: Configuration = Configuration()
     ) throws {
         self.database = database
@@ -46,7 +47,7 @@ public actor SyncEngine {
         self.credentials = credentials
         self.status = status
         self.configuration = configuration
-        self.applier = try ChangeApplier()
+        self.applier = try ChangeApplier(currentUserID: currentUserID)
         self.retryDelay = configuration.firstRetryDelay
     }
 

@@ -21,7 +21,10 @@ from sqlalchemy import inspect
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 CLIENT_SOURCES = REPO_ROOT / "ios/FamilyCalendarKit/Sources/FamilyCalendarKit"
-CLIENT_SCHEMA = CLIENT_SOURCES / "Database/SQL/v1_initial.sql"
+CLIENT_MIGRATIONS = [
+    CLIENT_SOURCES / "Database/SQL/v1_initial.sql",
+    CLIENT_SOURCES / "Database/SQL/v2_superseded_edits.sql",
+]
 CLIENT_MODELS = CLIENT_SOURCES / "Models"
 
 # The device carries an outbox flag; the server has no use for one.
@@ -30,7 +33,8 @@ CLIENT_ONLY_COLUMNS = {"dirty"}
 # Credentials never reach a device: an email and a password hash copied onto
 # both phones, and into every change payload, would be a schema mistake.
 SERVER_ONLY_TABLES = {"change_log", "alembic_version", "credentials"}
-CLIENT_ONLY_TABLES = {"sync_state"}
+# Device bookkeeping: the cursor, and the edits an arriving row replaced.
+CLIENT_ONLY_TABLES = {"sync_state", "superseded_edits", "sqlite_sequence"}
 
 # How a Postgres type has to be spelled in SQLite for a value to survive the
 # round trip without translation.
@@ -55,7 +59,8 @@ TYPE_EQUIVALENTS = {
 def client_schema() -> sqlite3.Connection:
     connection = sqlite3.connect(":memory:")
     connection.execute("PRAGMA foreign_keys = ON")
-    connection.executescript(CLIENT_SCHEMA.read_text())
+    for migration in CLIENT_MIGRATIONS:
+        connection.executescript(migration.read_text())
     return connection
 
 
