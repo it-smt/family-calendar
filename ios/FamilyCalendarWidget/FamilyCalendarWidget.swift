@@ -12,9 +12,7 @@ import WidgetKit
 struct FamilyCalendarWidgetBundle: WidgetBundle {
     var body: some Widget {
         FamilyCalendarWidget()
-        if #available(iOS 16.2, *) {
-            LeaveTimeLiveActivity()
-        }
+        LeaveTimeLiveActivity()
     }
 }
 

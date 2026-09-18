@@ -8,7 +8,6 @@ import WidgetKit
 /// Worth having for exactly one window — from shortly before someone has to
 /// leave until they should have arrived — which is why the app starts it late
 /// and ends it promptly.
-@available(iOS 16.2, *)
 struct LeaveTimeLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: LeaveTimeAttributes.self) { context in
@@ -45,7 +44,6 @@ struct LeaveTimeLiveActivity: Widget {
     }
 }
 
-@available(iOS 16.2, *)
 struct LockScreenView: View {
     let context: ActivityViewContext<LeaveTimeAttributes>
 

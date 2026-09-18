@@ -43,16 +43,24 @@ extension LeaveTimeAttributes: ActivityAttributes {}
 /// A Live Activity is worth having for exactly one window — from shortly before
 /// someone has to leave until they should have arrived — and is a nuisance
 /// outside it, so it is started late and ended promptly.
-@available(iOS 16.2, *)
-public actor LeaveTimeActivities {
+///
+/// Deliberately holds nothing. ActivityKit already keeps the running
+/// activities, and a dictionary of our own would be a second answer to the same
+/// question — one that goes stale the moment the system ends an activity itself,
+/// which it does when the user swipes it away or the stale date passes. Looking
+/// it up each time is also what keeps this free of isolation: an `Activity` is
+/// not `Sendable`, so holding one in an actor and then awaiting a method on it
+/// is sending it somewhere it must not go.
+public enum LeaveTimeActivities {
     /// How long before leaving the countdown appears.
     public static let leadTime: TimeInterval = 30 * 60
 
-    private var running: [UUID: Activity<LeaveTimeAttributes>] = [:]
+    /// The running activity for this task, if there is one.
+    static func current(for taskID: UUID) -> Activity<LeaveTimeAttributes>? {
+        Activity<LeaveTimeAttributes>.activities.first { $0.attributes.taskID == taskID }
+    }
 
-    public init() {}
-
-    public func update(
+    public static func update(
         taskID: UUID,
         title: String,
         destinationName: String?,
@@ -61,46 +69,49 @@ public actor LeaveTimeActivities {
         now: Date = Date()
     ) async {
         let leaveAt = Travel.leaveTime(for: occurrence, estimate: estimate)
-        let state = LeaveTimeAttributes.ContentState(
-            leaveAt: leaveAt,
-            arriveBy: occurrence,
-            travelMinutes: Int((estimate.duration / 60).rounded()),
-            isApproximate: estimate.isApproximate
+        let content = ActivityContent(
+            state: LeaveTimeAttributes.ContentState(
+                leaveAt: leaveAt,
+                arriveBy: occurrence,
+                travelMinutes: Int((estimate.duration / 60).rounded()),
+                isApproximate: estimate.isApproximate
+            ),
+            staleDate: occurrence
         )
 
         // Outside the window there is nothing to show.
-        guard now >= leaveAt.addingTimeInterval(-Self.leadTime), now < occurrence else {
+        guard now >= leaveAt.addingTimeInterval(-leadTime), now < occurrence else {
             await end(taskID: taskID)
             return
         }
 
-        if let activity = running[taskID] {
-            await activity.update(ActivityContent(state: state, staleDate: occurrence))
+        if let activity = current(for: taskID) {
+            await activity.update(content)
             return
         }
 
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
 
         do {
-            running[taskID] = try Activity.request(
+            _ = try Activity.request(
                 attributes: LeaveTimeAttributes(
                     taskID: taskID, taskTitle: title, destinationName: destinationName
                 ),
-                content: ActivityContent(state: state, staleDate: occurrence)
+                content: content
             )
         } catch {
             Log.sync.error("could not start the countdown: \(error.localizedDescription, privacy: .public)")
         }
     }
 
-    public func end(taskID: UUID) async {
-        guard let activity = running.removeValue(forKey: taskID) else { return }
+    public static func end(taskID: UUID) async {
+        guard let activity = current(for: taskID) else { return }
         await activity.end(nil, dismissalPolicy: .immediate)
     }
 
-    public func endAll() async {
-        for taskID in running.keys {
-            await end(taskID: taskID)
+    public static func endAll() async {
+        for activity in Activity<LeaveTimeAttributes>.activities {
+            await activity.end(nil, dismissalPolicy: .immediate)
         }
     }
 }
