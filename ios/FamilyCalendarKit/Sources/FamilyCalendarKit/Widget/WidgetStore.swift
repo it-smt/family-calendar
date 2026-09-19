@@ -23,12 +23,23 @@ public struct WidgetStore: Sendable {
         return WidgetStore(database: try AppDatabase.shared())
     }
 
+    /// Ticked off? For a task that happens once, its own flag; for a repeat,
+    /// whether this instant has a row.
+    private func isDone(
+        _ task: CalendarTask, at occurrence: Date, in completed: Set<CompletedOccurrence>
+    ) -> Bool {
+        guard task.rrule != nil else { return task.isCompleted }
+        return completed.contains(
+            CompletedOccurrence(taskID: task.id, occurrence: occurrence)
+        )
+    }
+
     /// One snapshot per moment the widget should be redrawn at.
     public func timeline(now: Date = Date(), calendar: Calendar = .current) throws -> [WidgetSnapshot] {
         let startOfDay = calendar.startOfDay(for: now)
         let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? startOfDay
 
-        let (tasks, categories, shopping, unsynced, origin) = try database.reader.read { db in
+        let (tasks, categories, shopping, unsynced, origin, completed) = try database.reader.read { db in
             let tasks = try CalendarTask
                 .filter(CalendarTask.Columns.deletedAt == nil)
                 .fetchAll(db)
@@ -43,7 +54,33 @@ public struct WidgetStore: Sendable {
                 .fetchAll(db)
             let unsynced = try Outbox.collect(db, limit: Int.max).count
             let origin = try SyncState.current(db).origin
-            return (tasks, categories, shopping, unsynced, origin)
+
+            // Какие именно разы уже отмечены: у повтора одна строка и правило,
+            // и «сделано» живёт отдельной строкой.
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT task_id AS task, occurrence AS at FROM occurrence_completions
+                    WHERE deleted_at IS NULL AND occurrence >= ? AND occurrence < ?
+                    """,
+                arguments: [
+                    Timestamp.string(from: startOfDay), Timestamp.string(from: endOfDay),
+                ]
+            )
+            var completed: Set<CompletedOccurrence> = []
+            for row in rows {
+                let identifier: DatabaseValue = row["task"]
+                let moment: DatabaseValue = row["at"]
+                guard
+                    let text = String.fromDatabaseValue(identifier),
+                    let taskID = UUID(uuidString: text),
+                    let stamp = String.fromDatabaseValue(moment),
+                    let occurrence = Timestamp.date(from: stamp)
+                else { continue }
+                completed.insert(CompletedOccurrence(taskID: taskID, occurrence: occurrence))
+            }
+
+            return (tasks, categories, shopping, unsynced, origin, completed)
         }
 
         // Read from the cache, never measured here: a widget that waited for
@@ -66,13 +103,15 @@ public struct WidgetStore: Sendable {
             if task.isAllDay {
                 let today = task.startsAt.map { $0 >= startOfDay && $0 < endOfDay } ?? true
                 guard today else { continue }
+                let occurrence = task.startsAt ?? startOfDay
                 lines.append(
                     WidgetSnapshot.TaskLine(
                         id: task.id,
                         title: task.title,
                         startsAt: nil,
                         isAllDay: true,
-                        isCompleted: task.isCompleted,
+                        occurrence: occurrence,
+                        isCompleted: isDone(task, at: occurrence, in: completed),
                         assigneeID: task.assigneeID,
                         colorHex: task.categoryID.flatMap { colours[$0] },
                         locationName: task.locationName
@@ -88,7 +127,8 @@ public struct WidgetStore: Sendable {
                         title: task.title,
                         startsAt: occurrence,
                         isAllDay: false,
-                        isCompleted: task.isCompleted,
+                        occurrence: occurrence,
+                        isCompleted: isDone(task, at: occurrence, in: completed),
                         assigneeID: task.assigneeID,
                         colorHex: task.categoryID.flatMap { colours[$0] },
                         locationName: task.locationName,

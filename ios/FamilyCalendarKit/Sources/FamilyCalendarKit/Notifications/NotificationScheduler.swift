@@ -47,6 +47,7 @@ public actor NotificationScheduler {
                     tasks: loaded.tasks,
                     reminders: loaded.reminders,
                     estimates: estimates,
+                    completed: loaded.completed,
                     now: now
                 )
             }

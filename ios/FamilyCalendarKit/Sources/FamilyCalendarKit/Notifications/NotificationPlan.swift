@@ -43,6 +43,7 @@ public enum NotificationPlan {
         tasks: [CalendarTask],
         reminders: [UUID: [Reminder]],
         estimates: [UUID: TravelEstimate] = [:],
+        completed: Set<CompletedOccurrence> = [],
         now: Date = Date(),
         limit: Int = limit,
         horizon: TimeInterval = horizon
@@ -55,6 +56,13 @@ public enum NotificationPlan {
             guard let taskReminders = reminders[task.id], !taskReminders.isEmpty else { continue }
 
             for occurrence in Recurrence.occurrences(of: task, in: window) {
+                // A chore already ticked off for this Tuesday must not ring on
+                // Tuesday. An alert for something done is exactly what makes
+                // people turn alerts off.
+                guard !completed.contains(
+                    CompletedOccurrence(taskID: task.id, occurrence: occurrence)
+                ) else { continue }
+
                 for reminder in taskReminders {
                     guard !reminder.isDeleted else { continue }
                     // Geofences are regions, not scheduled alerts, and are
@@ -135,9 +143,11 @@ public enum NotificationPlan {
     }
 
     /// Everything the planner needs, in two queries.
-    public static func load(_ db: Database) throws
-        -> (tasks: [CalendarTask], reminders: [UUID: [Reminder]])
-    {
+    public static func load(_ db: Database) throws -> (
+        tasks: [CalendarTask],
+        reminders: [UUID: [Reminder]],
+        completed: Set<CompletedOccurrence>
+    ) {
         let tasks = try CalendarTask
             .filter(CalendarTask.Columns.deletedAt == nil)
             .filter(CalendarTask.Columns.completedAt == nil)
@@ -147,6 +157,31 @@ public enum NotificationPlan {
             .filter(Reminder.Columns.deletedAt == nil)
             .fetchAll(db)
 
-        return (tasks, Dictionary(grouping: reminders, by: \.taskID))
+        // Only what is still ahead: a tick from last month cannot silence
+        // anything, and the set is what the planner checks every occurrence
+        // against.
+        let since = Timestamp.string(from: Date().addingTimeInterval(-24 * 60 * 60))
+        let rows = try Row.fetchAll(
+            db,
+            sql: """
+                SELECT task_id AS task, occurrence AS at FROM occurrence_completions
+                WHERE deleted_at IS NULL AND occurrence >= ?
+                """,
+            arguments: [since]
+        )
+        var completed: Set<CompletedOccurrence> = []
+        for row in rows {
+            let identifier: DatabaseValue = row["task"]
+            let moment: DatabaseValue = row["at"]
+            guard
+                let text = String.fromDatabaseValue(identifier),
+                let taskID = UUID(uuidString: text),
+                let stamp = String.fromDatabaseValue(moment),
+                let occurrence = Timestamp.date(from: stamp)
+            else { continue }
+            completed.insert(CompletedOccurrence(taskID: taskID, occurrence: occurrence))
+        }
+
+        return (tasks, Dictionary(grouping: reminders, by: \.taskID), completed)
     }
 }

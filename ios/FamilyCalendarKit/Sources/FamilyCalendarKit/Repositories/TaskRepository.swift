@@ -1,6 +1,17 @@
 import Foundation
 import GRDB
 
+/// A task and one of the instants its rule puts it on.
+public struct CompletedOccurrence: Hashable, Sendable {
+    public let taskID: UUID
+    public let occurrence: Date
+
+    public init(taskID: UUID, occurrence: Date) {
+        self.taskID = taskID
+        self.occurrence = Timestamp.truncatedToMilliseconds(occurrence)
+    }
+}
+
 /// Reads and writes tasks. The only way the UI touches the database.
 ///
 /// Every write goes through `touch(by:)`, which stamps the row and marks it
@@ -81,6 +92,84 @@ public struct TaskRepository: Sendable {
         draft.touch(by: currentUserID)
         let record = draft
         try database.writer.write { db in try record.update(db) }
+        onLocalChange()
+    }
+
+    /// Which instants of which repeats are ticked off.
+    ///
+    /// Read as a set of task-and-instant pairs rather than joined per line: the
+    /// day asks once for the whole window, and a week or a month is the same
+    /// one question.
+    public func observeCompletions(from: Date, to: Date) -> AsyncValueObservation<Set<CompletedOccurrence>> {
+        let start = Timestamp.string(from: from)
+        let end = Timestamp.string(from: to)
+
+        return ValueObservation
+            .tracking { db -> Set<CompletedOccurrence> in
+                let rows = try Row.fetchAll(
+                    db,
+                    sql: """
+                        SELECT task_id AS task, occurrence AS at
+                        FROM occurrence_completions
+                        WHERE deleted_at IS NULL AND occurrence >= ? AND occurrence < ?
+                        """,
+                    arguments: [start, end]
+                )
+
+                var completed: Set<CompletedOccurrence> = []
+                for row in rows {
+                    let identifier: DatabaseValue = row["task"]
+                    let moment: DatabaseValue = row["at"]
+                    guard
+                        let text = String.fromDatabaseValue(identifier),
+                        let taskID = UUID(uuidString: text),
+                        let stamp = String.fromDatabaseValue(moment),
+                        let occurrence = Timestamp.date(from: stamp)
+                    else { continue }
+                    completed.insert(
+                        CompletedOccurrence(taskID: taskID, occurrence: occurrence)
+                    )
+                }
+                return completed
+            }
+            .values(in: database.reader)
+    }
+
+    /// Ticks one instant of a repeat off, or un-ticks it.
+    ///
+    /// Un-ticking tombstones every row for that instant, not just one: two
+    /// phones ticking the same Tuesday while both were offline each made a row,
+    /// which is deliberate — a unique constraint the device can violate would
+    /// have the loser retrying a rejected push for ever.
+    public func setCompleted(_ task: CalendarTask, occurrence: Date, _ done: Bool) throws {
+        let moment = Timestamp.truncatedToMilliseconds(occurrence)
+        let stamp = Timestamp.string(from: moment)
+
+        try database.writer.write { db in
+            let existing = try OccurrenceCompletion
+                .filter(OccurrenceCompletion.Columns.taskID == task.id.storedKey)
+                .filter(OccurrenceCompletion.Columns.occurrence == stamp)
+                .filter(OccurrenceCompletion.Columns.deletedAt == nil)
+                .fetchAll(db)
+
+            if done {
+                guard existing.isEmpty else { return }
+                var completion = OccurrenceCompletion(
+                    householdID: task.householdID,
+                    taskID: task.id,
+                    occurrence: moment,
+                    completedBy: currentUserID
+                )
+                completion.touch(by: currentUserID)
+                try completion.insert(db)
+            } else {
+                for row in existing {
+                    var draft = row
+                    draft.markDeleted(by: currentUserID)
+                    try draft.update(db)
+                }
+            }
+        }
         onLocalChange()
     }
 

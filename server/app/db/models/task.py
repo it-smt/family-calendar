@@ -132,3 +132,40 @@ class Subtask(Base, HouseholdScopedMixin):
         Index("ix_subtasks_task_id_sort_order", "task_id", "sort_order"),
         Index("ix_subtasks_household_id_updated_at", "household_id", "updated_at"),
     )
+
+
+class OccurrenceCompletion(Base, HouseholdScopedMixin):
+    """One instant of a repeating task, ticked off.
+
+    A repeat is a single row and a rule, so there is nowhere on the task to
+    record that this Tuesday is done. Before this existed, ticking one off
+    struck it out of the rule instead — the line vanished rather than going
+    grey, and "skipped" and "done" were the same thing.
+
+    A row per completed instant, and no unique constraint on
+    (task_id, occurrence): two phones ticking the same Tuesday while both are
+    offline would each make a row, and a constraint the device can violate is
+    worse than a duplicate — the push would be rejected forever by a device
+    that has already committed the change. Any live row means done; unticking
+    tombstones all of them.
+    """
+
+    __tablename__ = "occurrence_completions"
+
+    task_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True), sync_fk("tasks.id"), nullable=False
+    )
+    #: The instant the rule put it on, not when it was ticked.
+    occurrence: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_by: Mapped[uuid.UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), sync_fk("users.id"), nullable=True
+    )
+
+    __table_args__ = (
+        Index("ix_occurrence_completions_task_id_occurrence", "task_id", "occurrence"),
+        Index(
+            "ix_occurrence_completions_household_id_updated_at",
+            "household_id",
+            "updated_at",
+        ),
+    )

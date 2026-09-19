@@ -7,7 +7,7 @@ from app.db.models.change_log import ChangeLog
 from app.db.models.credentials import Credential
 from app.db.models.devices import Device
 from app.db.models.household import Household, User
-from app.db.models.task import Reminder, Subtask, Task
+from app.db.models.task import OccurrenceCompletion, Reminder, Subtask, Task
 
 __all__ = [
     "ActivityEntry",
@@ -17,6 +17,7 @@ __all__ = [
     "Credential",
     "Device",
     "Household",
+    "OccurrenceCompletion",
     "PackingTemplate",
     "Reminder",
     "ShoppingItem",

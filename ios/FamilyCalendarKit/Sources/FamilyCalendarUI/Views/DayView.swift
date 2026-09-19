@@ -298,8 +298,8 @@ public struct DayView: View {
 
             Text(item.task.title)
                 .font(.subheadline)
-                .strikethrough(item.task.isCompleted)
-                .foregroundStyle(item.task.isCompleted ? .secondary : .primary)
+                .strikethrough(item.isCompleted)
+                .foregroundStyle(item.isCompleted ? .secondary : .primary)
                 .lineLimit(1)
 
             Spacer(minLength: 0)
@@ -315,7 +315,7 @@ public struct DayView: View {
             }
         }
         .card(tint: tint)
-        .opacity(item.task.isCompleted ? 0.6 : 1)
+        .opacity(item.isCompleted ? 0.6 : 1)
         .onTapGesture { editing = .editing(item.task) }
     }
 
@@ -585,7 +585,7 @@ struct TimelineRow: View {
                 Text(timeLabel)
                     .font(.system(size: 14, weight: .semibold, design: .rounded))
                     .monospacedDigit()
-                    .foregroundStyle(task.isCompleted ? .tertiary : .secondary)
+                    .foregroundStyle(item.isCompleted ? .tertiary : .secondary)
                 Rectangle()
                     .fill(Color(.separator))
                     .frame(width: 1)
@@ -601,10 +601,10 @@ struct TimelineRow: View {
     private var card: some View {
         HStack(spacing: 12) {
             Button(action: onToggle) {
-                Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
+                Image(systemName: item.isCompleted ? "checkmark.circle.fill" : "circle")
                     .font(.title3)
-                    .foregroundStyle(task.isCompleted ? .green : tint)
-                    .symbolEffect(.bounce, value: task.isCompleted)
+                    .foregroundStyle(item.isCompleted ? .green : tint)
+                    .symbolEffect(.bounce, value: item.isCompleted)
             }
             .buttonStyle(.plain)
 
@@ -612,8 +612,8 @@ struct TimelineRow: View {
                 HStack(spacing: 6) {
                     Text(task.title)
                         .font(.body.weight(.medium))
-                        .strikethrough(task.isCompleted)
-                        .foregroundStyle(task.isCompleted ? .secondary : .primary)
+                        .strikethrough(item.isCompleted)
+                        .foregroundStyle(item.isCompleted ? .secondary : .primary)
                         .lineLimit(2)
 
                     if hasAlert {
@@ -677,7 +677,7 @@ struct TimelineRow: View {
             }
         }
         .card(tint: tint)
-        .opacity(task.isCompleted ? 0.65 : 1)
+        .opacity(item.isCompleted ? 0.65 : 1)
     }
 
     private var tint: Color {

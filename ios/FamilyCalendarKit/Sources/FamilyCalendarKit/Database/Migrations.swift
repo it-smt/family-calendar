@@ -36,6 +36,10 @@ extension AppDatabase {
             try db.execute(sql: schemaSQL(named: "v6_date_the_dateless_tasks"))
         }
 
+        migrator.registerMigration("v7_occurrence_completions") { db in
+            try db.execute(sql: schemaSQL(named: "v7_occurrence_completions"))
+        }
+
         return migrator
     }
 

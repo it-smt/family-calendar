@@ -14,6 +14,7 @@ from app.db.models import (
     ActivityEntry,
     Category,
     Household,
+    OccurrenceCompletion,
     PackingTemplate,
     Reminder,
     ShoppingItem,
@@ -43,6 +44,9 @@ _SPECS = [
     EntitySpec("task", Task.__table__, logs_activity=True, label_column="title"),
     EntitySpec("reminder", Reminder.__table__),
     EntitySpec("subtask", Subtask.__table__, logs_activity=True, label_column="title"),
+    # One instant of a repeat, ticked off. No label of its own: the feed
+    # already carries the task it belongs to.
+    EntitySpec("occurrence_completion", OccurrenceCompletion.__table__),
     EntitySpec(
         "shopping_item", ShoppingItem.__table__, logs_activity=True, label_column="title"
     ),

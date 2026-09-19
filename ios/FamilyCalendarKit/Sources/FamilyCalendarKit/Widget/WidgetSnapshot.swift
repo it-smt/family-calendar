@@ -11,6 +11,10 @@ public struct WidgetSnapshot: Equatable, Sendable {
         public let id: UUID
         public let title: String
         public let startsAt: Date?
+        /// Какой именно раз это, для повторов. У задачи на весь день времени
+        /// нет, а повторяться она всё равно может — поэтому отдельно от
+        /// `startsAt`.
+        public let occurrence: Date?
         public let isAllDay: Bool
         public let isCompleted: Bool
         public let assigneeID: UUID?
@@ -24,6 +28,7 @@ public struct WidgetSnapshot: Equatable, Sendable {
             title: String,
             startsAt: Date?,
             isAllDay: Bool,
+            occurrence: Date? = nil,
             isCompleted: Bool,
             assigneeID: UUID?,
             colorHex: String?,
@@ -33,6 +38,7 @@ public struct WidgetSnapshot: Equatable, Sendable {
             self.id = id
             self.title = title
             self.startsAt = startsAt
+            self.occurrence = occurrence ?? startsAt
             self.isAllDay = isAllDay
             self.isCompleted = isCompleted
             self.assigneeID = assigneeID

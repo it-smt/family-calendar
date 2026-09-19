@@ -193,3 +193,52 @@ def test_an_estimate_that_puts_leaving_in_the_past_schedules_nothing():
     plan = make(tasks, reminders, now=NOW, estimates={"clinic": estimate(30)})
 
     assert plan == []
+
+
+# --- ticked-off instants of a repeat ------------------------------------------
+
+
+def test_a_ticked_off_occurrence_does_not_ring():
+    """A repeat is one row and a rule; "done" for one Tuesday is its own row."""
+    from datetime import timedelta as _timedelta
+
+    from tests.notification_plan_transcription import Reminder, Task, make
+
+    start = datetime(2026, 9, 21, 9, 0, tzinfo=UTC)
+    task = Task(id="T", title="Мусор", starts_at=start, rrule="FREQ=DAILY")
+    reminders = {"T": [Reminder(id="R", task_id="T", offset_minutes=-15)]}
+
+    everything = make([task], reminders, now=start - _timedelta(hours=1), horizon=_timedelta(days=3))
+    without_the_first = make(
+        [task],
+        reminders,
+        now=start - _timedelta(hours=1),
+        completed={("T", start)},
+        horizon=_timedelta(days=3),
+    )
+
+    assert len(everything) == len(without_the_first) + 1
+    assert all(item.occurrence != start for item in without_the_first)
+
+
+def test_ticking_one_off_leaves_the_rest_ringing():
+    from datetime import timedelta as _timedelta
+
+    from tests.notification_plan_transcription import Reminder, Task, make
+
+    start = datetime(2026, 9, 21, 9, 0, tzinfo=UTC)
+    task = Task(id="T", title="Мусор", starts_at=start, rrule="FREQ=DAILY")
+    reminders = {"T": [Reminder(id="R", task_id="T", offset_minutes=-15)]}
+
+    plan = make(
+        [task],
+        reminders,
+        now=start - _timedelta(hours=1),
+        completed={("T", start)},
+        horizon=_timedelta(days=3),
+    )
+
+    assert [item.occurrence for item in plan] == [
+        start + _timedelta(days=1),
+        start + _timedelta(days=2),
+    ]

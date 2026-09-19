@@ -11,6 +11,12 @@ import Observation
 public struct DayItem: Identifiable, Sendable {
     public let task: CalendarTask
     public let occurrence: Date
+    /// Whether *this* instant is done.
+    ///
+    /// For a task that happens once it is the task's own flag. For a repeat it
+    /// is a row of its own, because one row and a rule have nowhere to put
+    /// "this Tuesday went differently".
+    public let isCompleted: Bool
 
     public var id: String {
         "\(task.id.uuidString)@\(Timestamp.string(from: occurrence))"
@@ -51,6 +57,8 @@ public final class DayViewModel {
     /// Which tasks will ring. The bell on a card is the only way to tell
     /// without opening it.
     public private(set) var alerts: Set<UUID> = []
+    /// Ticked-off instants of repeats, for the window being shown.
+    public private(set) var completions: Set<CompletedOccurrence> = []
 
     public var day: Date {
         didSet {
@@ -111,6 +119,7 @@ public final class DayViewModel {
 
     private let environment: AppEnvironment
     private var taskObservation: Task<Void, Never>?
+    private var completionObservation: Task<Void, Never>?
     private var supportObservation: Task<Void, Never>?
 
     public init(environment: AppEnvironment, day: Date = Date()) {
@@ -126,7 +135,14 @@ public final class DayViewModel {
             if let categoryFilter, task.categoryID != categoryFilter { continue }
             if let assigneeFilter, task.assigneeID != assigneeFilter { continue }
             for occurrence in Recurrence.occurrences(of: task, in: window) {
-                items.append(DayItem(task: task, occurrence: occurrence))
+                let done = task.rrule == nil
+                    ? task.isCompleted
+                    : completions.contains(
+                        CompletedOccurrence(taskID: task.id, occurrence: occurrence)
+                    )
+                items.append(
+                    DayItem(task: task, occurrence: occurrence, isCompleted: done)
+                )
             }
         }
         return items.sorted { $0.occurrence < $1.occurrence }
@@ -146,7 +162,7 @@ public final class DayViewModel {
     }
 
     public var unfinishedCount: Int {
-        visibleItems.filter { !$0.task.isCompleted }.count
+        visibleItems.filter { !$0.isCompleted }.count
     }
 
     /// The next thing that has not happened yet — the one the screen leads with.
@@ -156,7 +172,7 @@ public final class DayViewModel {
     public var nextItem: DayItem? {
         guard Calendar.current.isDateInToday(day) else { return nil }
         let now = Date()
-        let unfinished = visibleItems.filter { !$0.task.isCompleted }
+        let unfinished = visibleItems.filter { !$0.isCompleted }
 
         // The next thing with a time on it. An all-day task is stored at
         // midnight, so by the clock it is always in the past — it is not
@@ -185,14 +201,35 @@ public final class DayViewModel {
 
     public func onDisappear() {
         taskObservation?.cancel()
+        completionObservation?.cancel()
         supportObservation?.cancel()
         taskObservation = nil
+        completionObservation = nil
         supportObservation = nil
     }
 
     private func restartTaskObservation() {
         taskObservation?.cancel()
         let window = range
+
+        // The ticked-off instants follow the same window, so they are restarted
+        // with it rather than once at the start: a month moved on would
+        // otherwise be read against last month's answers.
+        completionObservation?.cancel()
+        completionObservation = Task { [environment, window] in
+            do {
+                for try await value in environment.tasks.observeCompletions(
+                    from: window.lowerBound, to: window.upperBound
+                ) {
+                    self.completions = value
+                }
+            } catch {
+                Log.database.error(
+                    "completion observation ended: \(error.localizedDescription, privacy: .public)"
+                )
+            }
+        }
+
         taskObservation = Task { [environment, window] in
             do {
                 for try await value in environment.tasks.tasksTouching(
@@ -260,18 +297,15 @@ public final class DayViewModel {
 
     // MARK: Actions
 
-    /// Ticking a line off.
-    ///
-    /// A repeat has one row and many instants, so "done" for one Tuesday is
-    /// recorded by striking that instant out of the rule — the line goes away
-    /// rather than going grey. A task that happens once is marked completed
-    /// and stays, crossed out, where it was.
+    /// Ticking a line off. Both kinds stay where they are, crossed out.
     public func toggleCompleted(_ item: DayItem) {
         do {
             if item.isRepeating {
-                try environment.tasks.skip(item.task, occurrence: item.occurrence)
+                try environment.tasks.setCompleted(
+                    item.task, occurrence: item.occurrence, !item.isCompleted
+                )
             } else {
-                try environment.tasks.setCompleted(item.task, !item.task.isCompleted)
+                try environment.tasks.setCompleted(item.task, !item.isCompleted)
             }
         } catch {
             Log.database.error("could not save: \(error.localizedDescription, privacy: .public)")

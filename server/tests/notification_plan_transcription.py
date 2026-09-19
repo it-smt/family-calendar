@@ -65,10 +65,12 @@ def make(
     reminders: dict[str, list[Reminder]],
     now: datetime,
     estimates: dict | None = None,
+    completed: set[tuple[str, datetime]] | None = None,
     limit: int = LIMIT,
     horizon: timedelta = HORIZON,
 ) -> list[Planned]:
     estimates = estimates or {}
+    completed = completed or set()
     window = (now, now + horizon)
     planned: list[Planned] = []
 
@@ -80,6 +82,12 @@ def make(
             continue
 
         for occurrence in occurrences(task, window):
+            # A chore already ticked off for this Tuesday must not ring on
+            # Tuesday. An alert for something done is exactly what makes
+            # people turn alerts off.
+            if (task.id, occurrence) in completed:
+                continue
+
             for reminder in task_reminders:
                 if reminder.deleted or reminder.kind == "geo":
                     continue

@@ -16,6 +16,7 @@ public enum SyncEntity: String, CaseIterable, Sendable {
     case task
     case reminder
     case subtask
+    case occurrenceCompletion = "occurrence_completion"
     case shoppingItem = "shopping_item"
     case activityEntry = "activity_entry"
 
@@ -28,6 +29,7 @@ public enum SyncEntity: String, CaseIterable, Sendable {
         case .task: "tasks"
         case .reminder: "reminders"
         case .subtask: "subtasks"
+        case .occurrenceCompletion: "occurrence_completions"
         case .shoppingItem: "shopping_items"
         case .activityEntry: "activity_entries"
         }

@@ -170,3 +170,17 @@ extension ActivityEntry {
         RecordCoding.dateDecoding
     }
 }
+
+extension OccurrenceCompletion {
+    public static func databaseUUIDEncodingStrategy(for column: String) -> DatabaseUUIDEncodingStrategy {
+        RecordCoding.uuid
+    }
+
+    public static func databaseDateEncodingStrategy(for column: String) -> DatabaseDateEncodingStrategy {
+        RecordCoding.dateEncoding
+    }
+
+    public static func databaseDateDecodingStrategy(for column: String) -> DatabaseDateDecodingStrategy {
+        RecordCoding.dateDecoding
+    }
+}

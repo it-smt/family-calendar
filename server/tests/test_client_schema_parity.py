@@ -28,6 +28,7 @@ CLIENT_MIGRATIONS = [
     CLIENT_SOURCES / "Database/SQL/v4_activity_notified.sql",
     CLIENT_SOURCES / "Database/SQL/v5_drop_apns_token.sql",
     CLIENT_SOURCES / "Database/SQL/v6_date_the_dateless_tasks.sql",
+    CLIENT_SOURCES / "Database/SQL/v7_occurrence_completions.sql",
 ]
 # Records live wherever they belong, not only in Models/, so the parser
 # looks through the whole package rather than one folder.

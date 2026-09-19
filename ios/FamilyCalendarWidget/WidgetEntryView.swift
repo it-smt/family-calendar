@@ -131,7 +131,11 @@ struct TaskLineView: View {
         HStack(spacing: 8) {
             // The reason the widget is worth having: ticking something off
             // without opening anything.
-            Button(intent: CompleteTaskIntent(taskID: line.id, completed: !line.isCompleted)) {
+            Button(
+                intent: CompleteTaskIntent(
+                    taskID: line.id, occurrence: line.occurrence, completed: !line.isCompleted
+                )
+            ) {
                 Image(systemName: line.isCompleted ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(line.isCompleted ? .green : .secondary)
             }
