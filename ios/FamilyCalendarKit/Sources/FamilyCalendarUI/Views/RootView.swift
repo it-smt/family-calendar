@@ -10,9 +10,11 @@ import UIKit
 public struct RootView: View {
     @State private var tab: Tab = .day
     private let environment: AppEnvironment
+    private let onSignOut: () -> Void
 
-    public init(environment: AppEnvironment) {
+    public init(environment: AppEnvironment, onSignOut: @escaping () -> Void) {
         self.environment = environment
+        self.onSignOut = onSignOut
     }
 
     enum Tab: Hashable {
@@ -33,7 +35,7 @@ public struct RootView: View {
                 .tabItem { Label("Изменения", systemImage: "clock.arrow.circlepath") }
                 .tag(Tab.feed)
 
-            SettingsView(environment: environment)
+            SettingsView(environment: environment, onSignOut: onSignOut)
                 .tabItem { Label("Настройки", systemImage: "gearshape") }
                 .tag(Tab.settings)
         }
@@ -57,12 +59,15 @@ public struct RootView: View {
 public struct SettingsView: View {
     @State private var household: Household?
     @State private var copied = false
+    @State private var leaving = false
     @State private var observation: Task<Void, Never>?
 
     private let environment: AppEnvironment
+    private let onSignOut: () -> Void
 
-    public init(environment: AppEnvironment) {
+    public init(environment: AppEnvironment, onSignOut: @escaping () -> Void = {}) {
         self.environment = environment
+        self.onSignOut = onSignOut
     }
 
     public var body: some View {
@@ -110,6 +115,12 @@ public struct SettingsView: View {
                             if !AppDatabase.isSharedWithWidget {
                                 widgetWarning
                             }
+                        }
+
+                        VStack(spacing: 8) {
+                            SectionLabel("Этот телефон")
+                            serverCard
+                            signOutCard
                         }
                     }
                     .padding(.horizontal, 16)
@@ -228,6 +239,59 @@ public struct SettingsView: View {
                 .foregroundStyle(.secondary)
         }
         .card(tint: Theme.swatchColor(1))
+    }
+
+    /// Куда этот телефон ходит за синхронизацией.
+    ///
+    /// Видно всегда, а не только когда сломалось: «нет сети» и «адрес, которого
+    /// нет» выглядят изнутри одинаково, и первый вопрос при обоих — «а куда он
+    /// вообще стучится».
+    private var serverCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Сервер", systemImage: "server.rack")
+                .font(.subheadline.weight(.medium))
+            Text(ServerAddress.current.absoluteString)
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+            if !ServerAddress.isConfigured {
+                Text("Адрес по умолчанию. Со второго телефона он недоступен — его задают при входе.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .card(tint: Theme.swatchColor(4))
+    }
+
+    private var signOutCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                leaving = true
+            } label: {
+                Label("Выйти", systemImage: "rectangle.portrait.and.arrow.right")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Theme.swatchColor(0))
+            }
+            .buttonStyle(.plain)
+
+            if environment.status.pendingChanges > 0 {
+                Text(
+                    plural(
+                        environment.status.pendingChanges,
+                        "изменение", "изменения", "изменений"
+                    ) + " ещё не отправлено — они останутся здесь до следующего входа."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+        }
+        .card(tint: Theme.swatchColor(0))
+        .confirmationDialog("Выйти из календаря?", isPresented: $leaving, titleVisibility: .visible) {
+            Button("Выйти", role: .destructive) { onSignOut() }
+            Button("Отмена", role: .cancel) {}
+        } message: {
+            Text("Данные останутся на телефоне. Их сотрёт только вход в другой календарь.")
+        }
     }
 
     private func row(

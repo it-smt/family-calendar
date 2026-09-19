@@ -125,6 +125,23 @@ class Device:
         households sharing a placeholder would collide.
         """
         stamp = wire_time(datetime.fromtimestamp(0, UTC))
+
+        # Somebody else's household in this database means another account was
+        # signed in on this phone. Their rows are not ours to show or to keep.
+        other = self.db.execute(
+            "SELECT EXISTS (SELECT 1 FROM households WHERE id <> ?)", (self.household_id,)
+        ).fetchone()[0]
+        if other:
+            for table in (
+                "occurrence_completions", "subtasks", "reminders", "activity_entries",
+                "shopping_items", "tasks", "packing_templates", "categories",
+                "superseded_edits", "route_cache", "users", "households",
+            ):
+                self.db.execute(f"DELETE FROM {table}")
+            self.db.execute(
+                "UPDATE sync_state SET pull_cursor = 0, last_synced_at = NULL WHERE id = 1"
+            )
+
         if not self.db.execute(
             "SELECT EXISTS (SELECT 1 FROM households WHERE id = ?)", (self.household_id,)
         ).fetchone()[0]:

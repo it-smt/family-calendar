@@ -62,7 +62,20 @@ public struct AppRootView: View {
                 begin(with: environment, credentials: credentials)
             }
         case .ready(let environment):
-            RootView(environment: environment)
+            RootView(environment: environment) {
+                // Back to the door. The database is left alone: the same
+                // person signing in again finds their calendar where it was,
+                // and only somebody else's household clears it out.
+                let registration = delegate.pushRegistration
+                let credentials = CredentialStore()
+                delegate.environment = nil
+                delegate.pushRegistration = nil
+                Task {
+                    await registration?.forget()
+                    await credentials.clear()
+                }
+                state = .signedOut(environment.database, credentials)
+            }
         case .failed(let message):
             ContentUnavailableView(
                 "Не удалось открыть календарь",
@@ -87,7 +100,7 @@ public struct AppRootView: View {
             begin(
                 with: try AppEnvironment(
                     database: database,
-                    api: SyncAPI(baseURL: ServerAddress.url),
+                    api: SyncAPI(baseURL: ServerAddress.current),
                     credentials: credentials,
                     householdID: session.householdID,
                     currentUserID: session.userID
@@ -104,7 +117,7 @@ public struct AppRootView: View {
         environment.start()
         delegate.environment = environment
         delegate.pushRegistration = PushRegistration(
-            api: SyncAPI(baseURL: ServerAddress.url), credentials: credentials
+            api: SyncAPI(baseURL: ServerAddress.current), credentials: credentials
         )
         state = .ready(environment)
     }

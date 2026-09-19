@@ -66,6 +66,11 @@ become a *copy* of the one in the repository and then stop matching it, so
 changes land in git and never reach the build. A local package is always
 referenced by path.
 
+If you added it as a copy earlier and it still sets `ServerAddress.url`, the
+build will now fail to compile: the address moved into the package and is set
+from the sign-in screen instead. Replace your copy with the current file — it
+is nine lines and sets nothing.
+
 If the dialog offers **Copy** or **Move**, either is fine for this one file,
 because it should never change again. If you would rather it stay linked to the
 repository, use **File → Add Files to "FamilyCalendar"…** from the menu instead
@@ -81,25 +86,27 @@ about platform requirements rather than about this.
 
 ## 6. Let the app talk to your server
 
-The simulator shares your Mac's network, so `http://localhost:8000` is the right
-address — but App Transport Security blocks plain HTTP until you say otherwise.
+The address is not compiled in. On first launch the sign-in screen has a
+**Другой сервер** line; what you type there is kept on that device and shown
+afterwards in **Настройки → Этот телефон**.
 
-Target **FamilyCalendar → Info**, add a row:
+Three ways to fill it in, in the order you will want them:
 
-* Key: `App Transport Security Settings` (a Dictionary)
-* Inside it: `Allow Local Networking` = `YES`
+* **Simulator, server on this Mac.** Leave it alone. The default is
+  `http://localhost:8000`, and the simulator shares the Mac's network.
+* **A real phone, server on this Mac.** Type the Mac's address on the network,
+  `http://192.168.1.x:8000`. Plain HTTP needs an App Transport Security
+  exception — target **FamilyCalendar → Info**, add **App Transport Security
+  Settings → Allow Arbitrary Loads** = `YES` while you are testing, and take it
+  out again before anyone else uses this.
+* **A deployed server.** Type the domain: `calendar.example.com`. HTTPS is
+  assumed if you leave the scheme off, and no exception is needed.
+  `server/README.md` has how to put one up.
 
-On a real device, replace `localhost` in `FamilyCalendarApp.swift`'s `init()`
-with your Mac's address on the network (`ipconfig getifaddr en0`), and give ATS
-an exception for that host.
-
-While you are in **Info**, add these too — the app asks for them later and the
-system kills an app that asks without a reason string:
-
-| Key | Value |
-|---|---|
-| `Privacy - Location When In Use Usage Description` | To work out when you need to leave. |
-| `Privacy - Location Always and When In Use Usage Description` | To remind you when you get somewhere. |
+A build that already knows where it is going can skip the typing: add
+`FCServerURL` to the app's Info.plist with the full address. What was typed on
+the device wins over it, so a phone can still be pointed somewhere else without
+a new build.
 
 ## 7. Build
 

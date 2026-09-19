@@ -1,0 +1,25 @@
+# The certificate, and nothing else.
+#
+# Caddy gets one from Let's Encrypt on first start and renews it by itself,
+# which is the whole reason it is here rather than a hand-rolled nginx config
+# with a certbot cron job that fails silently in March.
+#
+# The phones talk to https://{$FC_DOMAIN} and nothing else is exposed.
+
+{$FC_DOMAIN} {
+	tls {$FC_ACME_EMAIL}
+
+	encode gzip
+
+	# The app's own health check, so an uptime monitor has something to poll
+	# that does not touch the database.
+	handle /health {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		reverse_proxy api:8000 {
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+}

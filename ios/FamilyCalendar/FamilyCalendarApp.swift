@@ -11,13 +11,6 @@ import SwiftUI
 struct FamilyCalendarApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
-    init() {
-        // The simulator shares the Mac's network. For a real device, put the
-        // Mac's address here and add an App Transport Security exception for
-        // it — ios/SETUP.md has the details.
-        ServerAddress.url = URL(string: "http://localhost:8000")!
-    }
-
     var body: some Scene {
         WindowGroup {
             AppRootView(delegate: delegate)

@@ -163,27 +163,51 @@ async def test_the_server_replaces_the_stand_in_rows(api):
     assert alice.dirty_count() == 0
 
 
-async def test_two_households_in_one_database_do_not_collide(api):
-    """The stand-in rows must not be able to knock each other out.
+async def test_a_second_account_gets_a_database_of_its_own(api):
+    """One phone, one household at a time.
 
-    `invite_code` carries a unique index over live rows, so two households
-    standing in with the same placeholder collide. Written with
-    `INSERT OR IGNORE`, as they first were, the second one is silently dropped
-    — and then every row belonging to it fails the foreign key at COMMIT, which
-    is the original bug wearing a different hat.
+    Two households in one database is what used to happen, and it broke twice
+    over: their tasks sat in the list together, and the stand-in rows collided
+    on the unique index over live invite codes — which `INSERT OR IGNORE`, as
+    it first was, swallowed, leaving every row of the second household failing
+    its foreign key at COMMIT.
 
-    One database holds two households whenever a second account is signed into
-    on a device whose database was not wiped in between.
+    Now the first household is cleared out, so neither can happen. The
+    placeholder invite code stays unique anyway: one of those two faults was
+    silent, and belt and braces cost nothing here.
     """
     alice = await register_without_syncing(api, "alice@example.com", "Alice")
 
-    second = str(uuid.uuid4()).upper()
-    alice.household_id = second
+    alice.household_id = str(uuid.uuid4()).upper()
     alice.user_id = str(uuid.uuid4()).upper()
     alice.write_local_identity()
 
-    rows = alice.db.execute("SELECT id FROM households ORDER BY id").fetchall()
-    assert len(rows) == 2
+    rows = alice.db.execute("SELECT id, invite_code FROM households").fetchall()
+    assert [row["id"] for row in rows] == [alice.household_id]
+    assert rows[0]["invite_code"] == alice.household_id
 
     alice.create_task("Второй дом")
     assert [task["title"] for task in alice.live_tasks()] == ["Второй дом"]
+
+
+async def test_signing_in_as_another_household_clears_the_first_one_out(api):
+    """A phone belongs to one household at a time.
+
+    Left alone, the previous account's tasks would sit in the list next to the
+    new one's — visible, and indistinguishable from your own. They are not this
+    device's to keep: nothing here was ever pushed by it, and a tombstone would
+    be an edit to somebody else's data.
+    """
+    alice = await register_without_syncing(api, "alice@example.com", "Alice")
+    alice.create_task("Чужая задача", starts_at=alice.now())
+    assert alice.live_tasks()
+
+    # The same phone, a different account.
+    alice.household_id = str(uuid.uuid4()).upper()
+    alice.user_id = str(uuid.uuid4()).upper()
+    alice.write_local_identity()
+
+    assert alice.live_tasks() == []
+    assert alice.cursor == 0
+    households = alice.db.execute("SELECT count(*) FROM households").fetchone()[0]
+    assert households == 1

@@ -77,6 +77,15 @@ public enum LocalIdentity {
         let user = userID.uuidString
 
         let wrote = try database.writer.write { db -> Bool in
+            // A different household in this database means somebody else has
+            // signed in on this phone. Their rows are not ours to show, to
+            // push, or to keep: everything goes, and the cursor with it, so
+            // the first pull fills an empty house rather than two.
+            if try holdsAnotherHousehold(db, than: household) {
+                Log.database.notice("another household was here; clearing it out")
+                try clearEverything(db)
+            }
+
             let hasHousehold = try exists(db, table: "households", id: household)
             let hasUser = try exists(db, table: "users", id: user)
 
@@ -142,6 +151,37 @@ public enum LocalIdentity {
         }
 
         return wrote
+    }
+
+    private static func holdsAnotherHousehold(_ db: Database, than household: String) throws
+        -> Bool
+    {
+        try Bool.fetchOne(
+            db,
+            sql: "SELECT EXISTS (SELECT 1 FROM households WHERE id <> ?)",
+            arguments: [household]
+        ) ?? false
+    }
+
+    /// Every synchronised table, and the cursor.
+    ///
+    /// A hard delete rather than tombstones: these rows belong to a household
+    /// this device is leaving, and a tombstone would be an edit to somebody
+    /// else's data. Nothing here is ours to push.
+    private static func clearEverything(_ db: Database) throws {
+        // Children first: the foreign keys are deferred, but the order costs
+        // nothing and says what points at what.
+        let tables = [
+            "occurrence_completions", "subtasks", "reminders", "activity_entries",
+            "shopping_items", "tasks", "packing_templates", "categories",
+            "superseded_edits", "route_cache", "users", "households",
+        ]
+        for table in tables {
+            try db.execute(sql: "DELETE FROM \(table)")
+        }
+        try db.execute(
+            sql: "UPDATE sync_state SET pull_cursor = 0, last_synced_at = NULL WHERE id = 1"
+        )
     }
 
     private static func exists(_ db: Database, table: String, id: String) throws -> Bool {

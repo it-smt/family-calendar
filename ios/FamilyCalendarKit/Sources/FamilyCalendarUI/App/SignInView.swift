@@ -29,6 +29,8 @@ public struct SignInView: View {
     @State private var inviteCode = ""
     @State private var isWorking = false
     @State private var problem: String?
+    @State private var server = ServerAddress.current.absoluteString
+    @State private var showingServer = false
 
     enum Mode: String, CaseIterable {
         case register = "Завести календарь"
@@ -45,6 +47,7 @@ public struct SignInView: View {
                     title
                     picker
                     fields
+                    serverField
                     if let problem { problemCard(problem) }
                     submitButton
                     Text("Дальше приложение работает без сети — сеть нужна только сейчас.")
@@ -137,6 +140,44 @@ public struct SignInView: View {
         modify(TextField(label, text: text)).padding(14)
     }
 
+    /// Адрес сервера. Свёрнут, пока его не спросили: тому, кто заводит
+    /// календарь первым, он обычно уже известен из установки, а второму
+    /// человеку его диктуют вместе с кодом приглашения.
+    @ViewBuilder
+    private var serverField: some View {
+        if showingServer {
+            VStack(alignment: .leading, spacing: 6) {
+                TextField("calendar.example.com", text: $server)
+                    .textContentType(.URL)
+                    .keyboardType(.URL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .padding(14)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(Color(.systemBackground))
+                    )
+                Text("Без https:// — допишется само.")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.75))
+            }
+            .transition(.opacity)
+        } else {
+            Button {
+                withAnimation(.snappy) { showingServer = true }
+            } label: {
+                Label(
+                    ServerAddress.isConfigured
+                        ? ServerAddress.current.absoluteString
+                        : "Другой сервер",
+                    systemImage: "server.rack"
+                )
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.75))
+            }
+        }
+    }
+
     private func problemCard(_ text: String) -> some View {
         Label(text, systemImage: "exclamationmark.triangle.fill")
             .font(.subheadline)
@@ -180,7 +221,15 @@ public struct SignInView: View {
         problem = nil
         defer { isWorking = false }
 
-        let api = SyncAPI(baseURL: ServerAddress.url)
+        // Адрес запоминается до попытки, а не после: если сервер не ответит,
+        // человек будет менять именно его, и набирать заново незачем.
+        guard ServerAddress.set(server) else {
+            problem = "Это не похоже на адрес сервера."
+            showingServer = true
+            return
+        }
+
+        let api = SyncAPI(baseURL: ServerAddress.current)
         do {
             let session: SyncAPI.Session
             switch mode {
@@ -266,7 +315,8 @@ public struct SignInView: View {
         } catch SyncAPI.Failure.rejected(_, _) {
             problem = mode == .join ? "Нет календаря с таким кодом." : "Не получилось создать календарь."
         } catch {
-            problem = "Сервер не отвечает."
+            problem = "Сервер \(ServerAddress.current.host() ?? "") не отвечает."
+            showingServer = true
         }
     }
 }

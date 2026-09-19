@@ -1,0 +1,111 @@
+# The server as it runs where both phones can reach it.
+#
+# Differences from docker-compose.yml, which is for your own machine:
+#
+#   * Postgres is not published on the host. Nothing outside this network has
+#     any business talking to it, and an open 5432 is how a database ends up in
+#     somebody's scan.
+#   * The application is not mounted from the working copy, so what runs is what
+#     was built, not whatever the directory happens to contain.
+#   * Caddy sits in front and holds the certificate. Both phones keep a token in
+#     the Keychain and send it on every request; over plain HTTP that token is
+#     readable by every network it crosses.
+#   * Nothing has a default. A secret with a fallback is a secret that ships.
+#
+# Run: docker compose -f docker-compose.prod.yml up -d --build
+#
+# Everything it needs is in .env beside this file — see .env.example.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      FC_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      FC_JWT_SECRET: ${FC_JWT_SECRET:?set FC_JWT_SECRET in .env — see the README}
+      # Optional. Without them the other phone finds out on its next launch
+      # rather than immediately, and nothing else changes.
+      FC_APNS_KEY_ID: ${FC_APNS_KEY_ID:-}
+      FC_APNS_TEAM_ID: ${FC_APNS_TEAM_ID:-}
+      FC_APNS_TOPIC: ${FC_APNS_TOPIC:-}
+      FC_APNS_KEY_PATH: ${FC_APNS_KEY_PATH:-}
+      FC_APNS_USE_SANDBOX: ${FC_APNS_USE_SANDBOX:-false}
+    volumes:
+      # Read-only, and only the key: the container has no other reason to see
+      # the host's filesystem.
+      - ./secrets:/srv/secrets:ro
+    command: >-
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers
+             --forwarded-allow-ips='*'"
+    expose:
+      - "8000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      FC_DOMAIN: ${FC_DOMAIN:?set FC_DOMAIN in .env — the name the phones will use}
+      FC_ACME_EMAIL: ${FC_ACME_EMAIL:?set FC_ACME_EMAIL in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  # Runs once a day and keeps a month. A household calendar is small; the cost
+  # of keeping it is nothing next to the cost of losing it.
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+      PGHOST: db
+      KEEP_DAYS: ${FC_BACKUP_KEEP_DAYS:-30}
+    volumes:
+      - ./backups:/backups
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          stamp=$$(date -u +%Y-%m-%dT%H-%M-%SZ)
+          if pg_dump --format=custom --file="/backups/family-calendar-$$stamp.dump"; then
+            echo "backed up to family-calendar-$$stamp.dump"
+          else
+            echo "BACKUP FAILED at $$stamp" >&2
+          fi
+          find /backups -name 'family-calendar-*.dump' -mtime +$$KEEP_DAYS -delete
+          sleep 86400
+        done
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
