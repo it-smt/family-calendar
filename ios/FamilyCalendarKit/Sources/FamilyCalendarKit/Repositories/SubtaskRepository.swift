@@ -40,7 +40,7 @@ public struct SubtaskRepository: Sendable {
         ValueObservation
             .tracking { db in
                 try Subtask
-                    .filter(Subtask.Columns.taskID == taskID)
+                    .filter(Subtask.Columns.taskID == taskID.storedKey)
                     .filter(Subtask.Columns.deletedAt == nil)
                     .order(Subtask.Columns.sortOrder)
                     .fetchAll(db)
@@ -108,7 +108,7 @@ public struct SubtaskRepository: Sendable {
             try Int.fetchOne(
                 db,
                 sql: "SELECT COALESCE(MAX(sort_order) + 1, 0) FROM subtasks WHERE task_id = ?",
-                arguments: [taskID]
+                arguments: [taskID.storedKey]
             ) ?? 0
         }
 

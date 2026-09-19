@@ -19,7 +19,7 @@ public struct HouseholdRepository: Sendable {
         ValueObservation
             .tracking { [householdID] db in
                 try Household
-                    .filter(Household.Columns.id == householdID.uuidString)
+                    .filter(Household.Columns.id == householdID.storedKey)
                     .fetchOne(db)
             }
             .values(in: database.reader)

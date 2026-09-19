@@ -49,7 +49,7 @@ public struct TaskRepository: Sendable {
     }
 
     public func task(id: UUID) throws -> CalendarTask? {
-        try database.reader.read { db in try CalendarTask.fetchOne(db, key: id) }
+        try database.reader.read { db in try CalendarTask.fetchOne(db, key: id.storedKey) }
     }
 
     // MARK: Writing

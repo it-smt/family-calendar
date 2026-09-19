@@ -41,7 +41,7 @@ public struct CompleteTaskIntent: AppIntent {
         let session = await CredentialStore().session
 
         try await database.writer.write { db in
-            guard var task = try CalendarTask.fetchOne(db, key: id) else { return }
+            guard var task = try CalendarTask.fetchOne(db, key: id.storedKey) else { return }
             task.completedAt = completed ? Date() : nil
             task.touch(by: session?.userID)
             try task.update(db)

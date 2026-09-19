@@ -97,13 +97,13 @@ extension ActivityEntry: TableRecord {
             .filter(Columns.notified == false)
             .filter(Columns.action == "completed")
             .filter(Columns.entityType == SyncEntity.task.rawValue)
-            .filter(Columns.actorID != currentUserID)
+            .filter(Columns.actorID != currentUserID.storedKey)
             .order(Columns.createdAt)
             .fetchAll(db)
 
         return try entries.compactMap { entry in
             guard
-                let task = try CalendarTask.fetchOne(db, key: entry.entityID),
+                let task = try CalendarTask.fetchOne(db, key: entry.entityID.storedKey),
                 task.createdBy == currentUserID
             else {
                 return nil
