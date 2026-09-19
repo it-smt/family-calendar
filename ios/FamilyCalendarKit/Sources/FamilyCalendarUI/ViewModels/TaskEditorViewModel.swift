@@ -3,6 +3,19 @@ import Foundation
 import OSLog
 import Observation
 
+/// Место, привязанное к точке на карте.
+public struct PinnedPlace: Sendable, Equatable {
+    public let name: String
+    public let latitude: Double
+    public let longitude: Double
+
+    public init(name: String, latitude: Double, longitude: Double) {
+        self.name = name
+        self.latitude = latitude
+        self.longitude = longitude
+    }
+}
+
 /// Creating and editing one task.
 ///
 /// The editor holds a draft and saves it on demand. Saving writes to the local
@@ -32,6 +45,23 @@ public final class TaskEditorViewModel {
     public var assigneeID: UUID?
     public var travelMode: TravelMode = .none
     public var locationName: String = ""
+
+    /// Место, выбранное на карте.
+    ///
+    /// Координаты засчитываются только пока название совпадает с тем, под
+    /// которым их выбрали: «Поликлиника» и «Поликлиника 3» — разные места, а
+    /// точка осталась бы старой и молча увела бы «когда выходить» не туда.
+    public private(set) var pinned: PinnedPlace?
+
+    public var isPinned: Bool {
+        guard let pinned else { return false }
+        return pinned.name == locationName
+    }
+
+    public func pin(_ place: PinnedPlace) {
+        pinned = place
+        locationName = place.name
+    }
 
     public private(set) var subtasks: [Subtask] = []
     public private(set) var reminders: [Reminder] = []
@@ -74,6 +104,11 @@ public final class TaskEditorViewModel {
             assigneeID = task.assigneeID
             travelMode = task.travelMode
             locationName = task.locationName ?? ""
+            if let name = task.locationName, let latitude = task.latitude,
+                let longitude = task.longitude
+            {
+                pinned = PinnedPlace(name: name, latitude: latitude, longitude: longitude)
+            }
         }
     }
 
@@ -232,6 +267,8 @@ public final class TaskEditorViewModel {
                     durationMinutes: isAllDay ? nil : durationMinutes,
                     isAllDay: isAllDay,
                     locationName: locationName.isEmpty ? nil : locationName,
+                    latitude: isPinned ? pinned?.latitude : nil,
+                    longitude: isPinned ? pinned?.longitude : nil,
                     assigneeID: assigneeID,
                     createdBy: environment.currentUserID,
                     categoryID: categoryID,
@@ -252,6 +289,8 @@ public final class TaskEditorViewModel {
                     draft.durationMinutes = isAllDay ? nil : durationMinutes
                     draft.isAllDay = isAllDay
                     draft.locationName = locationName.isEmpty ? nil : locationName
+                    draft.latitude = isPinned ? pinned?.latitude : nil
+                    draft.longitude = isPinned ? pinned?.longitude : nil
                     draft.assigneeID = assigneeID
                     draft.categoryID = categoryID
                     draft.travelMode = travelMode
@@ -269,7 +308,7 @@ public final class TaskEditorViewModel {
     /// Whether "when to leave" is worth offering: it needs somewhere to go and
     /// a way of getting there, and without both it is an alert about nothing.
     public var canRemindToLeave: Bool {
-        travelMode != .none && !locationName.isEmpty && !isAllDay
+        travelMode != .none && isPinned && !isAllDay
     }
 
     public func addReminder(offsetMinutes: Int, kind: ReminderKind = .fixed) {

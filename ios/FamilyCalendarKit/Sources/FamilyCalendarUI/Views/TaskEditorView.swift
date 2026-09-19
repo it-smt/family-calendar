@@ -1,4 +1,5 @@
 import FamilyCalendarKit
+import MapKit
 import SwiftUI
 
 /// Creating and editing a task.
@@ -8,6 +9,7 @@ import SwiftUI
 /// it yet is the sync engine's business, and the day list shows that separately.
 public struct TaskEditorView: View {
     @State private var model: TaskEditorViewModel
+    @State private var picking = false
     @Environment(\.dismiss) private var dismiss
 
     public init(environment: AppEnvironment, mode: TaskEditorViewModel.Mode, day: Date) {
@@ -47,6 +49,27 @@ public struct TaskEditorView: View {
 
                 Section("Где") {
                     TextField("Место", text: $model.locationName)
+
+                    Button {
+                        picking = true
+                    } label: {
+                        Label(
+                            model.isPinned ? "Место на карте выбрано" : "Найти на карте",
+                            systemImage: model.isPinned ? "mappin.circle.fill" : "mappin.and.ellipse"
+                        )
+                        .font(.subheadline)
+                        .foregroundStyle(model.isPinned ? Color.green : Color.accentColor)
+                    }
+
+                    if model.isPinned {
+                        Button {
+                            openInMaps()
+                        } label: {
+                            Label("Маршрут", systemImage: "arrow.triangle.turn.up.right.circle")
+                                .font(.subheadline)
+                        }
+                    }
+
                     Picker("Как добираться", selection: $model.travelMode) {
                         Text("Не важно").tag(TravelMode.none)
                         Text("Пешком").tag(TravelMode.walking)
@@ -54,6 +77,15 @@ public struct TaskEditorView: View {
                         Text("Транспортом").tag(TravelMode.transit)
                     }
                     .disabled(model.locationName.isEmpty)
+
+                    if !model.locationName.isEmpty && !model.isPinned {
+                        Text("""
+                            Без точки на карте «когда выходить» посчитать не из \
+                            чего. Название словами работает и так.
+                            """)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Section("Напомнить") {
@@ -84,6 +116,17 @@ public struct TaskEditorView: View {
                         dismiss()
                     }
                     .disabled(!model.canSave)
+                }
+            }
+            .sheet(isPresented: $picking) {
+                PlacePicker(query: model.locationName) { place in
+                    model.pin(
+                        PinnedPlace(
+                            name: place.name,
+                            latitude: place.latitude,
+                            longitude: place.longitude
+                        )
+                    )
                 }
             }
             .task { model.onAppear() }
@@ -283,6 +326,22 @@ public struct TaskEditorView: View {
                 }
             }
         }
+    }
+
+    /// Отдаёт точку системным картам. Строить маршрут самим незачем — это
+    /// делает приложение, которое для этого и стоит на телефоне.
+    private func openInMaps() {
+        guard let pinned = model.pinned else { return }
+        let placemark = MKPlacemark(
+            coordinate: CLLocationCoordinate2D(
+                latitude: pinned.latitude, longitude: pinned.longitude
+            )
+        )
+        let destination = MKMapItem(placemark: placemark)
+        destination.name = pinned.name
+        destination.openInMaps(
+            launchOptions: [MKLaunchOptionsDirectionsModeKey: model.travelMode.mapsMode]
+        )
     }
 
     private func durationLabel(_ minutes: Int) -> String {
