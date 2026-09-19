@@ -24,13 +24,15 @@ public struct TaskRepository: Sendable {
 
     // MARK: Reading
 
-    /// Live tasks for a day, as a stream that updates itself when the database
-    /// changes — including when a sync applies the partner's edit.
-    public func tasksOnDay(_ day: Date, calendar: Calendar = .current) -> AsyncValueObservation<[CalendarTask]> {
-        // Compared as the strings the column actually holds. A `Date` put into
-        // a query would be encoded by GRDB's default strategy, not the wire
-        // format these records are written with, and the window would silently
-        // match nothing.
+    /// Everything that could land on this day, repeats included.
+    ///
+    /// A repeating task is stored once, on the day it started; the instants it
+    /// falls on afterwards are worked out on the device. So the day cannot ask
+    /// for "tasks whose `starts_at` is today" any more — it asks for today's
+    /// tasks *and* every rule that began before today ends, and expands them.
+    public func tasksTouching(
+        _ day: Date, calendar: Calendar = .current
+    ) -> AsyncValueObservation<[CalendarTask]> {
         let start = Timestamp.string(from: calendar.startOfDay(for: day))
         let end = Timestamp.string(
             from: calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: day))
@@ -41,7 +43,12 @@ public struct TaskRepository: Sendable {
             .tracking { db in
                 try CalendarTask
                     .filter(CalendarTask.Columns.deletedAt == nil)
-                    .filter(CalendarTask.Columns.startsAt >= start && CalendarTask.Columns.startsAt < end)
+                    .filter(
+                        (CalendarTask.Columns.startsAt >= start
+                            && CalendarTask.Columns.startsAt < end)
+                            || (CalendarTask.Columns.rrule != nil
+                                && CalendarTask.Columns.startsAt < end)
+                    )
                     .order(CalendarTask.Columns.startsAt)
                     .fetchAll(db)
             }
@@ -67,6 +74,27 @@ public struct TaskRepository: Sendable {
     public func update(_ task: CalendarTask, _ edit: (inout CalendarTask) -> Void) throws {
         var draft = task
         edit(&draft)
+        draft.touch(by: currentUserID)
+        let record = draft
+        try database.writer.write { db in try record.update(db) }
+        onLocalChange()
+    }
+
+    /// Cancels one instant of a repeating task, leaving the rule alone.
+    ///
+    /// This is what "done" means for a repeat as well as "not this week":
+    /// there is one row for the whole series and nowhere to record that one
+    /// Tuesday went differently, so the instant is struck out of the rule.
+    /// Ticking off "вынести мусор" therefore makes today's disappear rather
+    /// than showing it crossed out — the honest consequence of a shape that
+    /// keeps a repeat as a single row.
+    public func skip(_ task: CalendarTask, occurrence: Date) throws {
+        var draft = task
+        var exceptions = draft.recurrenceExceptionDates
+        let moment = Timestamp.truncatedToMilliseconds(occurrence)
+        guard !exceptions.contains(moment) else { return }
+        exceptions.append(moment)
+        draft.recurrenceExceptionDates = exceptions
         draft.touch(by: currentUserID)
         let record = draft
         try database.writer.write { db in try record.update(db) }

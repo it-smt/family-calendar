@@ -37,12 +37,20 @@ def day_window(day: datetime) -> tuple[str, str]:
 
 
 def tasks_on_day(device: Device, day: datetime) -> list[str]:
+    """`TaskRepository.tasksTouching`, transcribed.
+
+    Not "tasks whose `starts_at` is today" any more: a repeating task is stored
+    once, on the day it started, and the instants it falls on afterwards are
+    worked out on the device. So the query also takes every rule that began
+    before the day ends, and the expansion happens above it.
+    """
     start, end = day_window(day)
     rows = device.db.execute(
-        "SELECT title FROM tasks "
-        "WHERE deleted_at IS NULL AND starts_at >= ? AND starts_at < ? "
+        "SELECT title, rrule FROM tasks "
+        "WHERE deleted_at IS NULL "
+        "  AND ((starts_at >= ? AND starts_at < ?) OR (rrule IS NOT NULL AND starts_at < ?)) "
         "ORDER BY starts_at",
-        (start, end),
+        (start, end, end),
     )
     return [row["title"] for row in rows]
 
@@ -194,3 +202,34 @@ async def test_a_task_with_no_list_is_not_counted_at_all(api):
     device.create_task("Врач", starts_at=device.now())
 
     assert packing(device) == {}
+
+
+# --- repeats ------------------------------------------------------------------
+
+
+async def test_a_repeating_task_is_a_candidate_for_a_later_day(api):
+    """The row stays on the day it started; the day query still has to see it."""
+    device = await register_without_syncing(api, "alice@example.com", "Alice")
+    start = datetime(2026, 9, 1, 9, tzinfo=UTC)
+    device.create_task("Вынести мусор", starts_at=wire_time(start), rrule="FREQ=WEEKLY")
+
+    assert tasks_on_day(device, start) == ["Вынести мусор"]
+    assert tasks_on_day(device, start + timedelta(days=7)) == ["Вынести мусор"]
+    assert tasks_on_day(device, start + timedelta(days=70)) == ["Вынести мусор"]
+
+
+async def test_a_repeating_task_is_not_a_candidate_before_it_starts(api):
+    device = await register_without_syncing(api, "alice@example.com", "Alice")
+    start = datetime(2026, 9, 10, 9, tzinfo=UTC)
+    device.create_task("Вынести мусор", starts_at=wire_time(start), rrule="FREQ=WEEKLY")
+
+    assert tasks_on_day(device, start - timedelta(days=1)) == []
+
+
+async def test_a_one_off_task_is_still_only_on_its_own_day(api):
+    device = await register_without_syncing(api, "alice@example.com", "Alice")
+    day = datetime(2026, 9, 20, tzinfo=UTC)
+    device.create_task("Врач", starts_at=wire_time(day.replace(hour=16)))
+
+    assert tasks_on_day(device, day) == ["Врач"]
+    assert tasks_on_day(device, day + timedelta(days=7)) == []

@@ -3,6 +3,22 @@ import Foundation
 import OSLog
 import Observation
 
+/// One appearance of a task on a day.
+///
+/// A repeating task is one row and many instants, so the list is of these
+/// rather than of tasks: the same "вынести мусор" is a different line on
+/// Monday and on Tuesday, and the time shown is the instant, not the row's.
+public struct DayItem: Identifiable, Sendable {
+    public let task: CalendarTask
+    public let occurrence: Date
+
+    public var id: String {
+        "\(task.id.uuidString)@\(Timestamp.string(from: occurrence))"
+    }
+
+    public var isRepeating: Bool { task.rrule != nil }
+}
+
 /// The day list.
 ///
 /// Reads the database and nothing else. A change from the partner arrives by
@@ -42,39 +58,45 @@ public final class DayViewModel {
         self.day = day
     }
 
-    public var visibleTasks: [CalendarTask] {
-        tasks.filter { task in
-            if let categoryFilter, task.categoryID != categoryFilter { return false }
-            if let assigneeFilter, task.assigneeID != assigneeFilter { return false }
-            return true
+    /// Today's lines: every task that falls on this day, repeats expanded.
+    public var visibleItems: [DayItem] {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: day)
+        guard let end = calendar.date(byAdding: .day, value: 1, to: start) else { return [] }
+
+        var items: [DayItem] = []
+        for task in tasks {
+            if let categoryFilter, task.categoryID != categoryFilter { continue }
+            if let assigneeFilter, task.assigneeID != assigneeFilter { continue }
+            for occurrence in Recurrence.occurrences(of: task, in: start..<end) {
+                items.append(DayItem(task: task, occurrence: occurrence))
+            }
         }
+        return items.sorted { $0.occurrence < $1.occurrence }
     }
 
     public var unfinishedCount: Int {
-        visibleTasks.filter { !$0.isCompleted }.count
+        visibleItems.filter { !$0.task.isCompleted }.count
     }
 
     /// The next thing that has not happened yet — the one the screen leads with.
     ///
     /// On a day that is not today there is no "next": the whole day is ahead or
     /// behind, and singling one out would be arbitrary.
-    public var nextTask: CalendarTask? {
+    public var nextItem: DayItem? {
         guard Calendar.current.isDateInToday(day) else { return nil }
         let now = Date()
-        let unfinished = visibleTasks.filter { !$0.isCompleted }
+        let unfinished = visibleItems.filter { !$0.task.isCompleted }
 
         // The next thing with a time on it. An all-day task is stored at
         // midnight, so by the clock it is always in the past — it is not
         // "next", it is "today".
-        if let timed = unfinished.first(where: { task in
-            guard !task.isAllDay, let startsAt = task.startsAt else { return false }
-            return startsAt >= now
-        }) {
+        if let timed = unfinished.first(where: { !$0.task.isAllDay && $0.occurrence >= now }) {
             return timed
         }
 
         // Nothing left with a time: whatever is on for the day will do.
-        return unfinished.first(where: \.isAllDay)
+        return unfinished.first(where: \.task.isAllDay)
     }
 
     public func onAppear() {
@@ -102,7 +124,7 @@ public final class DayViewModel {
         taskObservation?.cancel()
         taskObservation = Task { [environment, day] in
             do {
-                for try await value in environment.tasks.tasksOnDay(day) {
+                for try await value in environment.tasks.tasksTouching(day) {
                     self.tasks = value
                 }
             } catch {
@@ -165,17 +187,36 @@ public final class DayViewModel {
 
     // MARK: Actions
 
-    public func toggleCompleted(_ task: CalendarTask) {
+    /// Ticking a line off.
+    ///
+    /// A repeat has one row and many instants, so "done" for one Tuesday is
+    /// recorded by striking that instant out of the rule — the line goes away
+    /// rather than going grey. A task that happens once is marked completed
+    /// and stays, crossed out, where it was.
+    public func toggleCompleted(_ item: DayItem) {
         do {
-            try environment.tasks.setCompleted(task, !task.isCompleted)
+            if item.isRepeating {
+                try environment.tasks.skip(item.task, occurrence: item.occurrence)
+            } else {
+                try environment.tasks.setCompleted(item.task, !item.task.isCompleted)
+            }
         } catch {
             Log.database.error("could not save: \(error.localizedDescription, privacy: .public)")
         }
     }
 
-    public func delete(_ task: CalendarTask) {
+    /// Deleting one instant of a repeat, rather than the whole series.
+    public func skip(_ item: DayItem) {
         do {
-            try environment.tasks.delete(task)
+            try environment.tasks.skip(item.task, occurrence: item.occurrence)
+        } catch {
+            Log.database.error("could not skip: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    public func delete(_ item: DayItem) {
+        do {
+            try environment.tasks.delete(item.task)
         } catch {
             Log.database.error("could not delete: \(error.localizedDescription, privacy: .public)")
         }

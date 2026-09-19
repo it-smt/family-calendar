@@ -16,6 +16,59 @@ public struct PinnedPlace: Sendable, Equatable {
     }
 }
 
+/// Повторы, которые действительно заводят: не конструктор RFC 5545, а шесть
+/// правил, которыми живёт семья.
+///
+/// Движок понимает весь стандарт — и проверен против `python-dateutil` на
+/// четырёхстах случайных правилах. Но экран, на котором можно собрать
+/// «третий четверг каждого второго месяца», нужен примерно никому, а стоит
+/// дорого. Правило, пришедшее откуда-то ещё и не похожее ни на одно из этих,
+/// показывается как «своё» и сохраняется нетронутым.
+public enum RepeatRule: String, CaseIterable, Sendable, Identifiable {
+    case never, daily, weekdays, weekly, biweekly, monthly, yearly, custom
+
+    public var id: String { rawValue }
+
+    public var label: String {
+        switch self {
+        case .never: "Не повторять"
+        case .daily: "Каждый день"
+        case .weekdays: "По будням"
+        case .weekly: "Каждую неделю"
+        case .biweekly: "Раз в две недели"
+        case .monthly: "Каждый месяц"
+        case .yearly: "Каждый год"
+        case .custom: "Своё правило"
+        }
+    }
+
+    /// Без префикса `RRULE:` — так это лежит в колонке и так это читает и
+    /// сервер, и движок.
+    public var rrule: String? {
+        switch self {
+        case .never, .custom: nil
+        case .daily: "FREQ=DAILY"
+        case .weekdays: "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"
+        case .weekly: "FREQ=WEEKLY"
+        case .biweekly: "FREQ=WEEKLY;INTERVAL=2"
+        case .monthly: "FREQ=MONTHLY"
+        case .yearly: "FREQ=YEARLY"
+        }
+    }
+
+    /// Те, что показываются в списке: «своё» туда не попадает, его нельзя
+    /// выбрать — только унаследовать.
+    public static var offered: [RepeatRule] {
+        allCases.filter { $0 != .custom }
+    }
+
+    public static func matching(_ rrule: String?) -> RepeatRule {
+        guard let rrule, !rrule.isEmpty else { return .never }
+        let wanted = rrule.uppercased()
+        return offered.first { $0.rrule?.uppercased() == wanted } ?? .custom
+    }
+}
+
 /// Creating and editing one task.
 ///
 /// The editor holds a draft and saves it on demand. Saving writes to the local
@@ -43,6 +96,19 @@ public final class TaskEditorViewModel {
     public var isAllDay: Bool = false
     public var categoryID: UUID?
     public var assigneeID: UUID?
+
+    /// Правило повтора, как оно лежит в колонке.
+    public private(set) var rrule: String?
+
+    /// Что выбрано в списке. «Своё» выбрать нельзя — оно только показывается,
+    /// и переключение на что угодно другое его заменяет.
+    public var repeatRule: RepeatRule {
+        get { RepeatRule.matching(rrule) }
+        set {
+            guard newValue != .custom else { return }
+            rrule = newValue.rrule
+        }
+    }
     public var travelMode: TravelMode = .none
     public var locationName: String = ""
 
@@ -102,6 +168,7 @@ public final class TaskEditorViewModel {
             isAllDay = task.isAllDay || task.startsAt == nil
             categoryID = task.categoryID
             assigneeID = task.assigneeID
+            rrule = task.rrule
             travelMode = task.travelMode
             locationName = task.locationName ?? ""
             if let name = task.locationName, let latitude = task.latitude,
@@ -269,6 +336,7 @@ public final class TaskEditorViewModel {
                     locationName: locationName.isEmpty ? nil : locationName,
                     latitude: isPinned ? pinned?.latitude : nil,
                     longitude: isPinned ? pinned?.longitude : nil,
+                    rrule: rrule,
                     assigneeID: assigneeID,
                     createdBy: environment.currentUserID,
                     categoryID: categoryID,
@@ -288,6 +356,7 @@ public final class TaskEditorViewModel {
                     draft.startsAt = when
                     draft.durationMinutes = isAllDay ? nil : durationMinutes
                     draft.isAllDay = isAllDay
+                    draft.rrule = rrule
                     draft.locationName = locationName.isEmpty ? nil : locationName
                     draft.latitude = isPinned ? pinned?.latitude : nil
                     draft.longitude = isPinned ? pinned?.longitude : nil

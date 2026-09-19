@@ -72,10 +72,13 @@ public struct DayView: View {
 
             WeekStrip(selected: $model.day)
 
-            if let next = model.nextTask {
-                NextUpCard(task: next, category: next.categoryID.flatMap { model.categories[$0] })
-                    .onTapGesture { editing = .editing(next) }
-                    .transition(.scale(scale: 0.96).combined(with: .opacity))
+            if let next = model.nextItem {
+                NextUpCard(
+                    item: next,
+                    category: next.task.categoryID.flatMap { model.categories[$0] }
+                )
+                .onTapGesture { editing = .editing(next.task) }
+                .transition(.scale(scale: 0.96).combined(with: .opacity))
             }
         }
         .padding(.horizontal, 18)
@@ -115,34 +118,34 @@ public struct DayView: View {
 
     private enum Row: Identifiable {
         case now
-        case task(CalendarTask)
+        case item(DayItem)
 
         var id: String {
             switch self {
             case .now: "now"
-            case .task(let task): task.id.uuidString
+            case .item(let item): item.id
             }
         }
     }
 
-    /// The day's tasks, with the present moment slotted into its place.
+    /// The day's lines, with the present moment slotted into its place.
     private var rows: [Row] {
-        let tasks = model.visibleTasks
-        guard Calendar.current.isDateInToday(model.day) else { return tasks.map(Row.task) }
+        let items = model.visibleItems
+        guard Calendar.current.isDateInToday(model.day) else { return items.map(Row.item) }
 
         let now = Date()
         // All-day tasks sit at midnight, so they fall on the "already passed"
         // side and the marker lands below them, where the day really is.
-        let passed = tasks.prefix { task in (task.startsAt ?? .distantPast) <= now }
-        var rows = passed.map(Row.task)
+        let passed = items.prefix { $0.occurrence <= now }
+        var rows = passed.map(Row.item)
         rows.append(.now)
-        rows.append(contentsOf: tasks.dropFirst(passed.count).map(Row.task))
+        rows.append(contentsOf: items.dropFirst(passed.count).map(Row.item))
         return rows
     }
 
     @ViewBuilder
     private var timeline: some View {
-        if model.visibleTasks.isEmpty {
+        if model.visibleItems.isEmpty {
             EmptyDay()
                 .padding(.horizontal, 16)
                 .padding(.top, 40)
@@ -152,21 +155,37 @@ public struct DayView: View {
                     switch row {
                     case .now:
                         NowMarker()
-                    case .task(let task):
+                    case .item(let item):
                         TimelineRow(
-                            task: task,
-                            category: task.categoryID.flatMap { model.categories[$0] },
-                            packing: model.packing[task.id],
-                            assignee: task.assigneeID.flatMap { model.people[$0] },
-                            hasAlert: model.alerts.contains(task.id),
-                            onToggle: { withAnimation(.snappy) { model.toggleCompleted(task) } }
+                            item: item,
+                            category: item.task.categoryID.flatMap { model.categories[$0] },
+                            packing: model.packing[item.task.id],
+                            assignee: item.task.assigneeID.flatMap { model.people[$0] },
+                            hasAlert: model.alerts.contains(item.task.id),
+                            onToggle: { withAnimation(.snappy) { model.toggleCompleted(item) } }
                         )
-                        .onTapGesture { editing = .editing(task) }
+                        .onTapGesture { editing = .editing(item.task) }
                         .contextMenu {
-                            Button(role: .destructive) {
-                                withAnimation(.snappy) { model.delete(task) }
-                            } label: {
-                                Label("Удалить", systemImage: "trash")
+                            // У повтора две разные «удалить», и спутать их
+                            // дорого: одна убирает вторник, другая — все
+                            // вторники до конца времён.
+                            if item.isRepeating {
+                                Button {
+                                    withAnimation(.snappy) { model.skip(item) }
+                                } label: {
+                                    Label("Пропустить этот раз", systemImage: "calendar.badge.minus")
+                                }
+                                Button(role: .destructive) {
+                                    withAnimation(.snappy) { model.delete(item) }
+                                } label: {
+                                    Label("Удалить все повторы", systemImage: "trash")
+                                }
+                            } else {
+                                Button(role: .destructive) {
+                                    withAnimation(.snappy) { model.delete(item) }
+                                } label: {
+                                    Label("Удалить", systemImage: "trash")
+                                }
                             }
                         }
                     }
@@ -258,8 +277,10 @@ struct WeekStrip: View {
 
 /// The next thing due, on the header, where the eye lands first.
 struct NextUpCard: View {
-    let task: CalendarTask
+    let item: DayItem
     let category: TaskCategory?
+
+    private var task: CalendarTask { item.task }
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
@@ -277,8 +298,8 @@ struct NextUpCard: View {
                 Text(task.title)
                     .font(.headline)
                     .lineLimit(1)
-                if !task.isAllDay, let startsAt = task.startsAt {
-                    Text(startsAt, style: .relative)
+                if !task.isAllDay {
+                    Text(item.occurrence, style: .relative)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -291,8 +312,8 @@ struct NextUpCard: View {
                     .font(.system(size: 13, weight: .semibold))
                     .multilineTextAlignment(.trailing)
                     .foregroundStyle(.secondary)
-            } else if let startsAt = task.startsAt {
-                Text(startsAt, style: .time)
+            } else {
+                Text(item.occurrence, style: .time)
                     .font(.system(size: 24, weight: .semibold, design: .rounded))
                     .monospacedDigit()
             }
@@ -308,7 +329,7 @@ struct NextUpCard: View {
 
 /// One line of the timeline: the hour, the rule, the card.
 struct TimelineRow: View {
-    let task: CalendarTask
+    let item: DayItem
     let category: TaskCategory?
     /// Сколько из списка сборов уже отмечено, если список есть.
     let packing: SubtaskProgress?
@@ -317,6 +338,8 @@ struct TimelineRow: View {
     /// Зазвонит ли она.
     let hasAlert: Bool
     let onToggle: () -> Void
+
+    private var task: CalendarTask { item.task }
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -360,6 +383,13 @@ struct TimelineRow: View {
                             .font(.system(size: 10))
                             .foregroundStyle(.tertiary)
                             .accessibilityLabel("с напоминанием")
+                    }
+
+                    if item.isRepeating {
+                        Image(systemName: "repeat")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
+                            .accessibilityLabel("повторяется")
                     }
                 }
 
@@ -426,8 +456,9 @@ struct TimelineRow: View {
     private var timeLabel: String {
         // An all-day task is stored at midnight, which is a time nobody meant.
         if task.isAllDay { return "весь\nдень" }
-        guard let startsAt = task.startsAt else { return "—" }
-        return startsAt.formatted(date: .omitted, time: .shortened)
+        // The instant this line falls on, not the row's: a repeat is one row
+        // and many Tuesdays.
+        return item.occurrence.formatted(date: .omitted, time: .shortened)
     }
 }
 

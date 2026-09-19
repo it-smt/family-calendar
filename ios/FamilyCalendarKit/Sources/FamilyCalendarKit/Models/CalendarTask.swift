@@ -134,6 +134,7 @@ extension CalendarTask: TableRecord {
         public static let householdID = Column(CodingKeys.householdID)
         public static let title = Column(CodingKeys.title)
         public static let startsAt = Column(CodingKeys.startsAt)
+        public static let rrule = Column(CodingKeys.rrule)
         public static let assigneeID = Column(CodingKeys.assigneeID)
         public static let categoryID = Column(CodingKeys.categoryID)
         public static let completedAt = Column(CodingKeys.completedAt)

@@ -88,6 +88,22 @@ public struct TaskEditorView: View {
                     }
                 }
 
+                Section("Повтор") {
+                    Picker("Повторять", selection: $model.repeatRule) {
+                        if model.repeatRule == .custom {
+                            Text(RepeatRule.custom.label).tag(RepeatRule.custom)
+                        }
+                        ForEach(RepeatRule.offered) { rule in
+                            Text(rule.label).tag(rule)
+                        }
+                    }
+                    if model.repeatRule != .never {
+                        Text("Отсчёт от даты выше. Отдельный день можно пропустить долгим нажатием по нему в списке.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
                 Section("Напомнить") {
                     reminderRows
                 }
