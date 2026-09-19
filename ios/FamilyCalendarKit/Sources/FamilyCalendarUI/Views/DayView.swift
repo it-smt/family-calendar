@@ -59,9 +59,11 @@ public struct DayView: View {
 
                 HStack(spacing: 14) {
                     SyncIndicator(status: environment.status)
-                    CategoryFilterMenu(
+                    FilterMenu(
                         categories: Array(model.categories.values).sorted { $0.name < $1.name },
-                        selection: $model.categoryFilter
+                        people: Array(model.people.values).sorted { $0.displayName < $1.displayName },
+                        category: $model.categoryFilter,
+                        assignee: $model.assigneeFilter
                     )
                 }
                 .foregroundStyle(.white)
@@ -155,6 +157,8 @@ public struct DayView: View {
                             task: task,
                             category: task.categoryID.flatMap { model.categories[$0] },
                             packing: model.packing[task.id],
+                            assignee: task.assigneeID.flatMap { model.people[$0] },
+                            hasAlert: model.alerts.contains(task.id),
                             onToggle: { withAnimation(.snappy) { model.toggleCompleted(task) } }
                         )
                         .onTapGesture { editing = .editing(task) }
@@ -308,6 +312,10 @@ struct TimelineRow: View {
     let category: TaskCategory?
     /// Сколько из списка сборов уже отмечено, если список есть.
     let packing: SubtaskProgress?
+    /// На ком задача, если на ком-то.
+    let assignee: User?
+    /// Зазвонит ли она.
+    let hasAlert: Bool
     let onToggle: () -> Void
 
     var body: some View {
@@ -340,11 +348,20 @@ struct TimelineRow: View {
             .buttonStyle(.plain)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(task.title)
-                    .font(.body.weight(.medium))
-                    .strikethrough(task.isCompleted)
-                    .foregroundStyle(task.isCompleted ? .secondary : .primary)
-                    .lineLimit(2)
+                HStack(spacing: 6) {
+                    Text(task.title)
+                        .font(.body.weight(.medium))
+                        .strikethrough(task.isCompleted)
+                        .foregroundStyle(task.isCompleted ? .secondary : .primary)
+                        .lineLimit(2)
+
+                    if hasAlert {
+                        Image(systemName: "bell.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
+                            .accessibilityLabel("с напоминанием")
+                    }
+                }
 
                 if !details.isEmpty || packing != nil {
                     HStack(spacing: 6) {
@@ -379,6 +396,17 @@ struct TimelineRow: View {
             }
 
             Spacer(minLength: 0)
+
+            // Инициал того, на ком задача. Для двоих одной буквы достаточно,
+            // а цвет свой у каждого.
+            if let assignee {
+                Text(String(assignee.displayName.prefix(1)).uppercased())
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .frame(width: 22, height: 22)
+                    .background(Circle().fill(Color(hex: assignee.color)))
+                    .accessibilityLabel(assignee.displayName)
+            }
         }
         .card(tint: tint)
         .opacity(task.isCompleted ? 0.65 : 1)
@@ -452,34 +480,65 @@ struct SyncIndicator: View {
     }
 }
 
-struct CategoryFilterMenu: View {
+/// По категории и по тому, на ком задача.
+struct FilterMenu: View {
     let categories: [TaskCategory]
-    @Binding var selection: UUID?
+    let people: [User]
+    @Binding var category: UUID?
+    @Binding var assignee: UUID?
+
+    private var isFiltering: Bool { category != nil || assignee != nil }
 
     var body: some View {
         Menu {
-            Button("Все") { selection = nil }
-            Divider()
-            ForEach(categories) { category in
-                Button {
-                    selection = category.id
-                } label: {
-                    if selection == category.id {
-                        Label(category.name, systemImage: "checkmark")
-                    } else {
-                        Text(category.name)
+            if isFiltering {
+                Button("Показать всё") {
+                    category = nil
+                    assignee = nil
+                }
+                Divider()
+            }
+
+            if !categories.isEmpty {
+                Section("Категория") {
+                    ForEach(categories) { item in
+                        Button {
+                            category = category == item.id ? nil : item.id
+                        } label: {
+                            if category == item.id {
+                                Label(item.name, systemImage: "checkmark")
+                            } else {
+                                Text(item.name)
+                            }
+                        }
+                    }
+                }
+            }
+
+            if people.count > 1 {
+                Section("Кто делает") {
+                    ForEach(people) { person in
+                        Button {
+                            assignee = assignee == person.id ? nil : person.id
+                        } label: {
+                            if assignee == person.id {
+                                Label(person.displayName, systemImage: "checkmark")
+                            } else {
+                                Text(person.displayName)
+                            }
+                        }
                     }
                 }
             }
         } label: {
             Image(
-                systemName: selection == nil
-                    ? "line.3.horizontal.decrease.circle"
-                    : "line.3.horizontal.decrease.circle.fill"
+                systemName: isFiltering
+                    ? "line.3.horizontal.decrease.circle.fill"
+                    : "line.3.horizontal.decrease.circle"
             )
             .font(.system(size: 17, weight: .semibold))
         }
-        .disabled(categories.isEmpty)
+        .disabled(categories.isEmpty && people.count < 2)
     }
 }
 

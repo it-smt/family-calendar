@@ -56,8 +56,18 @@ public struct TaskEditorView: View {
                     .disabled(model.locationName.isEmpty)
                 }
 
+                Section("Напомнить") {
+                    reminderRows
+                }
+
                 Section("Категория") {
                     categoryChips
+                }
+
+                if model.people.count > 1 {
+                    Section("Кто делает") {
+                        assigneeChips
+                    }
                 }
 
                 subtaskSection
@@ -79,6 +89,99 @@ public struct TaskEditorView: View {
             .task { model.onAppear() }
             .onDisappear { model.onDisappear() }
         }
+    }
+
+    /// Напоминания. Сколько угодно на задачу — «за день» и «за 15 минут»
+    /// это разные вещи, и человеку обычно нужны обе.
+    @ViewBuilder
+    private var reminderRows: some View {
+        ForEach(model.reminders) { reminder in
+            HStack {
+                Image(systemName: reminder.kind == .leaveTime ? "figure.walk" : "bell.fill")
+                    .font(.caption)
+                    .foregroundStyle(Theme.swatchColor(1))
+                Text(Self.reminderLabel(reminder))
+                Spacer(minLength: 0)
+                Button {
+                    withAnimation(.snappy) { model.delete(reminder) }
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+
+        Menu {
+            ForEach(Self.offsets, id: \.minutes) { offset in
+                Button(offset.label) { withAnimation(.snappy) { model.addReminder(offsetMinutes: offset.minutes) } }
+            }
+            if model.canRemindToLeave {
+                Divider()
+                Button("Когда выходить") {
+                    withAnimation(.snappy) {
+                        model.addReminder(offsetMinutes: 0, kind: .leaveTime)
+                    }
+                }
+            }
+        } label: {
+            Label(
+                model.reminders.isEmpty ? "Добавить напоминание" : "Ещё одно",
+                systemImage: "bell.badge"
+            )
+            .font(.subheadline)
+        }
+
+        if model.isAllDay && !model.reminders.isEmpty {
+            Text("У задачи на весь день время отсчитывается от полуночи.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// Смещения отрицательные: «за 15 минут» это минус пятнадцать от начала.
+    private static let offsets: [(minutes: Int, label: String)] = [
+        (0, "В момент начала"),
+        (-5, "За 5 минут"),
+        (-15, "За 15 минут"),
+        (-30, "За 30 минут"),
+        (-60, "За час"),
+        (-180, "За 3 часа"),
+        (-1440, "За день"),
+    ]
+
+    private static func reminderLabel(_ reminder: Reminder) -> String {
+        if reminder.kind == .leaveTime { return "Когда выходить" }
+        return offsets.first { $0.minutes == reminder.offsetMinutes }?.label
+            ?? "За \(-reminder.offsetMinutes) мин"
+    }
+
+    /// Кто делает. Показывается только когда в доме есть второй человек —
+    /// до этого выбор из одного варианта.
+    private var assigneeChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                chip(
+                    title: "Не важно",
+                    colour: Theme.unlabelled,
+                    isSelected: model.assigneeID == nil
+                ) {
+                    model.assigneeID = nil
+                }
+
+                ForEach(model.people) { person in
+                    chip(
+                        title: person.displayName,
+                        colour: Color(hex: person.color),
+                        isSelected: model.assigneeID == person.id
+                    ) {
+                        model.assigneeID = person.id
+                    }
+                }
+            }
+            .padding(.vertical, 2)
+        }
+        .scrollClipDisabled()
     }
 
     /// Категории — плашками, а не выпадающим списком.

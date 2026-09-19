@@ -15,6 +15,7 @@ public final class AppEnvironment {
     public let status: SyncStatus
     public let tasks: TaskRepository
     public let subtasks: SubtaskRepository
+    public let reminders: ReminderRepository
     public let categories: CategoryRepository
     public let household: HouseholdRepository
     public let supersededEdits: SupersededEditRepository
@@ -99,6 +100,12 @@ public final class AppEnvironment {
             onLocalChange: requestSync
         )
         self.categories = CategoryRepository(
+            database: database,
+            householdID: householdID,
+            currentUserID: currentUserID,
+            onLocalChange: requestSync
+        )
+        self.reminders = ReminderRepository(
             database: database,
             householdID: householdID,
             currentUserID: currentUserID,

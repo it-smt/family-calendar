@@ -17,6 +17,9 @@ public final class DayViewModel {
     public private(set) var notices: [SupersededEdit] = []
     /// How much of each task's list is ticked off, for every task at once.
     public private(set) var packing: [UUID: SubtaskProgress] = [:]
+    /// Which tasks will ring. The bell on a card is the only way to tell
+    /// without opening it.
+    public private(set) var alerts: Set<UUID> = []
 
     public var day: Date {
         didSet {
@@ -82,6 +85,8 @@ public final class DayViewModel {
                 group.addTask { await self.observeCategories() }
                 group.addTask { await self.observeNotices() }
                 group.addTask { await self.observePacking() }
+                group.addTask { await self.observeAlerts() }
+                group.addTask { await self.observePeople() }
             }
         }
     }
@@ -115,6 +120,26 @@ public final class DayViewModel {
             }
         } catch {
             Log.database.error("category observation ended: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func observeAlerts() async {
+        do {
+            for try await value in environment.reminders.observeTasksWithAlerts() {
+                self.alerts = value
+            }
+        } catch {
+            Log.database.error("alert observation ended: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func observePeople() async {
+        do {
+            for try await value in environment.household.people() {
+                self.people = value
+            }
+        } catch {
+            Log.database.error("people observation ended: \(error.localizedDescription, privacy: .public)")
         }
     }
 

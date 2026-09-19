@@ -34,8 +34,10 @@ public final class TaskEditorViewModel {
     public var locationName: String = ""
 
     public private(set) var subtasks: [Subtask] = []
+    public private(set) var reminders: [Reminder] = []
     public private(set) var categories: [TaskCategory] = []
     public private(set) var templates: [PackingTemplate] = []
+    public private(set) var people: [User] = []
 
     public var newSubtaskTitle: String = ""
 
@@ -107,8 +109,10 @@ public final class TaskEditorViewModel {
         observation = Task {
             await withTaskGroup(of: Void.self) { group in
                 group.addTask { await self.observeCategories() }
+                group.addTask { await self.observePeople() }
                 if case .editing(let task) = self.mode {
                     group.addTask { await self.observeSubtasks(of: task.id) }
+                    group.addTask { await self.observeReminders(of: task.id) }
                 }
                 group.addTask { await self.observeTemplates() }
             }
@@ -127,6 +131,26 @@ public final class TaskEditorViewModel {
             }
         } catch {
             Log.database.error("category observation ended: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func observePeople() async {
+        do {
+            for try await value in environment.household.people() {
+                self.people = value.values.sorted { $0.displayName < $1.displayName }
+            }
+        } catch {
+            Log.database.error("people observation ended: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func observeReminders(of taskID: UUID) async {
+        do {
+            for try await value in environment.reminders.observe(taskID: taskID) {
+                self.reminders = value.sorted { $0.offsetMinutes > $1.offsetMinutes }
+            }
+        } catch {
+            Log.database.error("reminder observation ended: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -217,6 +241,7 @@ public final class TaskEditorViewModel {
                 // After the task, never before: the rows point at it, and the
                 // database will not hold a child whose parent is not there.
                 try environment.subtasks.insert(subtasks)
+                try environment.reminders.insert(reminders)
                 return saved
 
             case .editing(let task):
@@ -236,6 +261,47 @@ public final class TaskEditorViewModel {
         } catch {
             Log.database.error("could not save the task: \(error.localizedDescription, privacy: .public)")
             return nil
+        }
+    }
+
+    // MARK: Напоминания
+
+    /// Whether "when to leave" is worth offering: it needs somewhere to go and
+    /// a way of getting there, and without both it is an alert about nothing.
+    public var canRemindToLeave: Bool {
+        travelMode != .none && !locationName.isEmpty && !isAllDay
+    }
+
+    public func addReminder(offsetMinutes: Int, kind: ReminderKind = .fixed) {
+        // The same alert twice would ring twice.
+        guard !reminders.contains(where: {
+            $0.offsetMinutes == offsetMinutes && $0.kind == kind
+        }) else { return }
+
+        let reminder = environment.reminders.make(
+            for: taskID, offsetMinutes: offsetMinutes, kind: kind
+        )
+
+        guard isEditing else {
+            reminders.append(reminder)
+            reminders.sort { $0.offsetMinutes > $1.offsetMinutes }
+            return
+        }
+
+        do {
+            try environment.reminders.insert([reminder])
+        } catch {
+            Log.database.error("could not add a reminder: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    public func delete(_ reminder: Reminder) {
+        guard isEditing else {
+            reminders.removeAll { $0.id == reminder.id }
+            return
+        }
+        localWrite("deleting a reminder") {
+            try environment.reminders.delete(reminder)
         }
     }
 
