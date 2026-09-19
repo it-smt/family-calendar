@@ -63,7 +63,10 @@ public final class AppDatabase: Sendable {
                         "identifiers are written as \(idType) (\(id ?? "unreadable"))"
                     )
                 }
-                if stampType != "text" || stamp.flatMap(Timestamp.date(from:)) == nil {
+                // Compared against the exact bytes, not parsed: `Timestamp`
+                // also reads the shape SQLite writes on its own, so parsing
+                // would accept the very format this is here to rule out.
+                if stampType != "text" || stamp != Timestamp.string(from: probe.updatedAt) {
                     problems.append(
                         "timestamps are written as \(stampType) (\(stamp ?? "unreadable"))"
                     )
@@ -76,8 +79,17 @@ public final class AppDatabase: Sendable {
         }
 
         guard problems.isEmpty else {
+            // What the record says it wants, alongside what SQLite got. The two
+            // disagreeing means GRDB is not asking this type at all, which is a
+            // different fault from the type answering wrongly.
+            let declared = """
+                declared: \(Household.databaseUUIDEncodingStrategy(for: "id")), \
+                \(Household.databaseDateEncodingStrategy(for: "updated_at"))
+                """
             let summary = problems.joined(separator: "; ")
-            log.error("the database encoding is wrong: \(summary, privacy: .public)")
+            log.error(
+                "the database encoding is wrong: \(summary, privacy: .public) [\(declared, privacy: .public)]"
+            )
             throw DatabaseError.encodingMismatch(summary)
         }
     }
