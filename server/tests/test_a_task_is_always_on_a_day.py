@@ -130,3 +130,67 @@ async def test_the_repair_leaves_a_dated_task_alone(api, hour: int):
     row = device.db.execute("SELECT * FROM tasks").fetchone()
     assert row["starts_at"] == when
     assert row["is_all_day"] == 0
+
+
+# --- what the day card counts -------------------------------------------------
+
+
+def add_subtask(device: Device, task_id: str, title: str, *, done: int = 0,
+                deleted: bool = False) -> str:
+    subtask_id = str(uuid.uuid4()).upper()
+    moment = device.now()
+    device.db.execute(
+        "INSERT INTO subtasks "
+        "(id, household_id, task_id, title, is_done, sort_order, created_at, "
+        " updated_at, updated_by, deleted_at, dirty) "
+        "VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 1)",
+        (
+            subtask_id,
+            device.household_id,
+            task_id,
+            title,
+            done,
+            moment,
+            moment,
+            device.user_id,
+            moment if deleted else None,
+        ),
+    )
+    device.db.commit()
+    return subtask_id
+
+
+def packing(device: Device) -> dict[str, tuple[int, int]]:
+    """`SubtaskRepository.observeProgress`, transcribed."""
+    rows = device.db.execute(
+        "SELECT task_id AS task, COUNT(*) AS total, SUM(is_done) AS done "
+        "FROM subtasks WHERE deleted_at IS NULL GROUP BY task_id"
+    )
+    return {row["task"]: (row["done"], row["total"]) for row in rows}
+
+
+async def test_the_day_card_counts_what_is_packed(api):
+    device = await register_without_syncing(api, "alice@example.com", "Alice")
+    task = device.create_task("Бассейн", starts_at=device.now())
+    add_subtask(device, task, "Шапочка", done=1)
+    add_subtask(device, task, "Очки")
+    add_subtask(device, task, "Полотенце")
+
+    assert packing(device)[task] == (1, 3)
+
+
+async def test_a_deleted_item_leaves_the_count(api):
+    """Tombstones stay in the table; they are not part of the list any more."""
+    device = await register_without_syncing(api, "alice@example.com", "Alice")
+    task = device.create_task("Бассейн", starts_at=device.now())
+    add_subtask(device, task, "Шапочка", done=1)
+    add_subtask(device, task, "Очки", deleted=True)
+
+    assert packing(device)[task] == (1, 1)
+
+
+async def test_a_task_with_no_list_is_not_counted_at_all(api):
+    device = await register_without_syncing(api, "alice@example.com", "Alice")
+    device.create_task("Врач", starts_at=device.now())
+
+    assert packing(device) == {}

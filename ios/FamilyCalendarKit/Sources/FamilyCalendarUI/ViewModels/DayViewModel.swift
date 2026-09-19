@@ -15,6 +15,8 @@ public final class DayViewModel {
     public private(set) var categories: [UUID: TaskCategory] = [:]
     public private(set) var people: [UUID: User] = [:]
     public private(set) var notices: [SupersededEdit] = []
+    /// How much of each task's list is ticked off, for every task at once.
+    public private(set) var packing: [UUID: SubtaskProgress] = [:]
 
     public var day: Date {
         didSet {
@@ -79,6 +81,7 @@ public final class DayViewModel {
             await withTaskGroup(of: Void.self) { group in
                 group.addTask { await self.observeCategories() }
                 group.addTask { await self.observeNotices() }
+                group.addTask { await self.observePacking() }
             }
         }
     }
@@ -112,6 +115,16 @@ public final class DayViewModel {
             }
         } catch {
             Log.database.error("category observation ended: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func observePacking() async {
+        do {
+            for try await value in environment.subtasks.observeProgress() {
+                self.packing = value
+            }
+        } catch {
+            Log.database.error("packing observation ended: \(error.localizedDescription, privacy: .public)")
         }
     }
 

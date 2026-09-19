@@ -43,14 +43,24 @@ public final class TaskEditorViewModel {
     private let mode: Mode
     private var observation: Task<Void, Never>?
 
+    /// The task's identifier, known before the task exists.
+    ///
+    /// A list of things to bring can then be attached to a new task straight
+    /// away: the rows point at this, and the task is saved under the same
+    /// identifier a moment later. Making people save first and come back was
+    /// never a rule of the data — only of the screen.
+    private let taskID: UUID
+
     public init(environment: AppEnvironment, mode: Mode, day: Date = Date()) {
         self.environment = environment
         self.mode = mode
 
         switch mode {
         case .creating:
+            taskID = UUID()
             startsAt = Self.defaultTime(on: day)
         case .editing(let task):
+            taskID = task.id
             title = task.title
             notes = task.notes ?? ""
             startsAt = task.startsAt ?? Self.defaultTime(on: day)
@@ -130,13 +140,37 @@ public final class TaskEditorViewModel {
         }
     }
 
-    /// One tap turns "swimming" into four subtasks.
+    /// One tap turns "бассейн" into four things to tick off.
     public func apply(_ template: PackingTemplate) {
-        guard case .editing(let task) = mode else { return }
+        add(titles: template.items)
+    }
+
+    /// Where a new item goes: into the database when the task is already
+    /// there, into this object when it is not. Saving writes the difference.
+    private func add(titles: [String]) {
+        guard !titles.isEmpty else { return }
+
+        guard isEditing else {
+            let start = subtasks.count
+            subtasks.append(
+                contentsOf: titles.enumerated().map { offset, title in
+                    Subtask(
+                        householdID: environment.householdID,
+                        taskID: taskID,
+                        title: title,
+                        sortOrder: start + offset
+                    )
+                }
+            )
+            return
+        }
+
         do {
-            try environment.subtasks.apply(template, to: task.id)
+            for title in titles {
+                try environment.subtasks.add(to: taskID, title: title)
+            }
         } catch {
-            Log.database.error("could not apply the list: \(error.localizedDescription, privacy: .public)")
+            Log.database.error("could not add to the list: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -166,6 +200,7 @@ public final class TaskEditorViewModel {
             switch mode {
             case .creating:
                 let task = CalendarTask(
+                    id: taskID,
                     householdID: environment.householdID,
                     title: trimmed,
                     notes: notes.isEmpty ? nil : notes,
@@ -178,7 +213,11 @@ public final class TaskEditorViewModel {
                     categoryID: categoryID,
                     travelMode: travelMode
                 )
-                return try environment.tasks.create(task)
+                let saved = try environment.tasks.create(task)
+                // After the task, never before: the rows point at it, and the
+                // database will not hold a child whose parent is not there.
+                try environment.subtasks.insert(subtasks)
+                return saved
 
             case .editing(let task):
                 try environment.tasks.update(task) { draft in
@@ -204,22 +243,28 @@ public final class TaskEditorViewModel {
 
     public func addSubtask() {
         let trimmed = newSubtaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, case .editing(let task) = mode else { return }
-        do {
-            try environment.subtasks.add(to: task.id, title: trimmed)
-            newSubtaskTitle = ""
-        } catch {
-            Log.database.error("could not add a subtask: \(error.localizedDescription, privacy: .public)")
-        }
+        guard !trimmed.isEmpty else { return }
+        add(titles: [trimmed])
+        newSubtaskTitle = ""
     }
 
     public func toggle(_ subtask: Subtask) {
+        guard isEditing else {
+            if let index = subtasks.firstIndex(where: { $0.id == subtask.id }) {
+                subtasks[index].isDone.toggle()
+            }
+            return
+        }
         localWrite("marking a subtask") {
             try environment.subtasks.setDone(subtask, !subtask.isDone)
         }
     }
 
     public func delete(_ subtask: Subtask) {
+        guard isEditing else {
+            subtasks.removeAll { $0.id == subtask.id }
+            return
+        }
         localWrite("deleting a subtask") {
             try environment.subtasks.delete(subtask)
         }

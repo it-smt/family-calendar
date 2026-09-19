@@ -154,6 +154,7 @@ public struct DayView: View {
                         TimelineRow(
                             task: task,
                             category: task.categoryID.flatMap { model.categories[$0] },
+                            packing: model.packing[task.id],
                             onToggle: { withAnimation(.snappy) { model.toggleCompleted(task) } }
                         )
                         .onTapGesture { editing = .editing(task) }
@@ -305,6 +306,8 @@ struct NextUpCard: View {
 struct TimelineRow: View {
     let task: CalendarTask
     let category: TaskCategory?
+    /// Сколько из списка сборов уже отмечено, если список есть.
+    let packing: SubtaskProgress?
     let onToggle: () -> Void
 
     var body: some View {
@@ -343,7 +346,7 @@ struct TimelineRow: View {
                     .foregroundStyle(task.isCompleted ? .secondary : .primary)
                     .lineLimit(2)
 
-                if !details.isEmpty {
+                if !details.isEmpty || packing != nil {
                     HStack(spacing: 6) {
                         ForEach(details, id: \.self) { detail in
                             Text(detail)
@@ -352,6 +355,24 @@ struct TimelineRow: View {
                                 .padding(.vertical, 2)
                                 .background(tint.opacity(0.16), in: Capsule())
                                 .foregroundStyle(tint)
+                        }
+
+                        // Собрано ли. Иначе про список приходится помнить —
+                        // а он ровно для того, чтобы не приходилось.
+                        if let packing, packing.total > 0 {
+                            let colour = packing.isComplete ? Color.green : tint
+                            HStack(spacing: 3) {
+                                Image(systemName: packing.isComplete ? "bag.fill" : "bag")
+                                Text("\(packing.done)/\(packing.total)").monospacedDigit()
+                            }
+                            .font(.caption)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(colour.opacity(0.16), in: Capsule())
+                            .foregroundStyle(colour)
+                            .accessibilityLabel(
+                                "собрано \(packing.done) из \(packing.total)"
+                            )
                         }
                     }
                 }

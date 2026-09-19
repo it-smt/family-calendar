@@ -60,15 +60,7 @@ public struct TaskEditorView: View {
                     categoryChips
                 }
 
-                if model.isEditing {
-                    subtaskSection
-                } else {
-                    Section {
-                        Text("Сначала сохрани — потом добавишь, что взять с собой.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                subtaskSection
             }
             .navigationTitle(model.isEditing ? "Задача" : "Новая задача")
             .navigationBarTitleDisplayMode(.inline)
@@ -143,6 +135,9 @@ public struct TaskEditorView: View {
     }
 
     /// Subtasks, which double as the "what to bring" list.
+    ///
+    /// Шаблон подставляется и в ещё не сохранённую задачу: пункты лежат в
+    /// редакторе и записываются вместе с ней.
     private var subtaskSection: some View {
         Section("Что взять с собой") {
             ForEach(model.subtasks) { subtask in
