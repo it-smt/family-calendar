@@ -60,6 +60,11 @@ You need a machine that stays on and a name pointing at it. A two-euro VPS is
 plenty: this is a calendar for two people, and the database will not reach a
 gigabyte in a decade.
 
+One trap worth naming: `POSTGRES_PASSWORD` is put into a connection URL, so
+generate it with `openssl rand -hex 32` rather than base64. A `/` or a `+` in
+there cuts the URL in half, and the error you get talks about a host name and
+never mentions the password.
+
 ```sh
 # On the server, with an A record for FC_DOMAIN already pointing here.
 git clone <this repository> && cd family-calendar/server
