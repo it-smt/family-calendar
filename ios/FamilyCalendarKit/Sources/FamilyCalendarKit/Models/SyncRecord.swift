@@ -18,15 +18,23 @@ extension SyncRecord {
     /// Uppercase UUID strings and RFC 3339 timestamps, matching the server byte
     /// for byte. GRDB would otherwise store UUIDs as blobs and dates in its own
     /// format, and every change row would need translating on the way out.
-    public static var databaseUUIDEncodingStrategy: DatabaseUUIDEncodingStrategy {
+    ///
+    /// Static *functions* taking a column name, which is what GRDB asks for.
+    /// Written as properties — as these were — they compile perfectly, satisfy
+    /// nothing, and are never called: the defaults apply, identifiers go in as
+    /// sixteen-byte blobs, and a blob matches no text primary key. Every
+    /// foreign key in this schema then fails at COMMIT, so the app cannot
+    /// write a single row. `AppDatabase.verifyEncoding` checks it at launch
+    /// rather than trusting that this is still spelled right.
+    public static func databaseUUIDEncodingStrategy(for column: String) -> DatabaseUUIDEncodingStrategy {
         .uppercaseString
     }
 
-    public static var databaseDateEncodingStrategy: DatabaseDateEncodingStrategy {
+    public static func databaseDateEncodingStrategy(for column: String) -> DatabaseDateEncodingStrategy {
         .custom { Timestamp.string(from: $0) }
     }
 
-    public static var databaseDateDecodingStrategy: DatabaseDateDecodingStrategy {
+    public static func databaseDateDecodingStrategy(for column: String) -> DatabaseDateDecodingStrategy {
         .custom { dbValue in
             guard let string = String.fromDatabaseValue(dbValue) else { return nil }
             return Timestamp.date(from: string)

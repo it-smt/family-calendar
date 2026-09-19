@@ -23,11 +23,30 @@ public enum Timestamp {
 
     /// Accepts both `...T10:00:00.123Z` and `...T10:00:00Z`: Postgres omits the
     /// fractional part when it happens to be zero.
+    ///
+    /// And, last, `2026-09-19 10:00:00.000` — the shape SQLite writes a date in
+    /// when nobody tells it otherwise. Nothing produces that any more, but rows
+    /// written while the encoding strategies were being silently ignored are in
+    /// it, and a device should be able to read its own old rows rather than
+    /// refuse to open.
     public static func date(from string: String) -> Date? {
         if let parsed = try? writer.parse(string) {
             return parsed
         }
-        return try? readerWithoutFraction.parse(string)
+        if let parsed = try? readerWithoutFraction.parse(string) {
+            return parsed
+        }
+        return legacySQLiteDate(from: string)
+    }
+
+    private static func legacySQLiteDate(from string: String) -> Date? {
+        guard string.count >= 19, string.dropFirst(10).first == " " else { return nil }
+        var repaired = string.replacingOccurrences(of: " ", with: "T")
+        if !repaired.hasSuffix("Z") { repaired += "Z" }
+        if let parsed = try? writer.parse(repaired) {
+            return parsed
+        }
+        return try? readerWithoutFraction.parse(repaired)
     }
 
     /// The next version stamp for a row, strictly after the one it replaces.

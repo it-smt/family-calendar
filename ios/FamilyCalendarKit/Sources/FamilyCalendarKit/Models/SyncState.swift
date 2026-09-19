@@ -45,11 +45,11 @@ public struct SyncState: Codable, FetchableRecord, PersistableRecord, Sendable {
         case lastLongitude = "last_longitude"
     }
 
-    public static var databaseDateEncodingStrategy: DatabaseDateEncodingStrategy {
+    public static func databaseDateEncodingStrategy(for column: String) -> DatabaseDateEncodingStrategy {
         .custom { Timestamp.string(from: $0) }
     }
 
-    public static var databaseDateDecodingStrategy: DatabaseDateDecodingStrategy {
+    public static func databaseDateDecodingStrategy(for column: String) -> DatabaseDateDecodingStrategy {
         .custom { dbValue in
             guard let string = String.fromDatabaseValue(dbValue) else { return nil }
             return Timestamp.date(from: string)

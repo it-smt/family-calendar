@@ -20,6 +20,73 @@ public final class AppDatabase: Sendable {
         self.writer = writer
         self.reader = writer
         try Self.migrator.migrate(writer)
+        try writer.write { db in try Self.verifyEncoding(db) }
+    }
+
+    /// Proves that a record written through GRDB lands in the shape the schema
+    /// expects, before anything is allowed to depend on it.
+    ///
+    /// Identifiers go in as uppercase text and timestamps as RFC 3339, because
+    /// that is what arrives from the server and the two have to be the same
+    /// bytes. GRDB's own defaults are a sixteen-byte blob and
+    /// "YYYY-MM-DD HH:MM:SS.SSS", and a blob matches no text primary key: with
+    /// the defaults in force every foreign key in this schema fails at COMMIT
+    /// and the app cannot write a single row anywhere.
+    ///
+    /// Which is what it did, for days, because the strategies that override
+    /// those defaults are static functions taking a column name and had been
+    /// written as properties. That compiles. It is simply never called, and
+    /// nothing says so. So this stops asking the code and asks SQLite, on a row
+    /// that is rolled back.
+    static func verifyEncoding(_ db: Database) throws {
+        let probe = Household(id: UUID(), name: "probe", inviteCode: UUID().uuidString)
+        var problems: [String] = []
+
+        try db.inSavepoint {
+            try probe.insert(db)
+
+            if let row = try Row.fetchOne(
+                db,
+                sql: """
+                    SELECT typeof(id) AS idType, id AS id,
+                           typeof(updated_at) AS stampType, updated_at AS stamp
+                    FROM households WHERE rowid = last_insert_rowid()
+                    """
+            ) {
+                let idType = text(row, "idType") ?? "nothing"
+                let id = text(row, "id")
+                let stampType = text(row, "stampType") ?? "nothing"
+                let stamp = text(row, "stamp")
+
+                if idType != "text" || id != probe.id.uuidString {
+                    problems.append(
+                        "identifiers are written as \(idType) (\(id ?? "unreadable"))"
+                    )
+                }
+                if stampType != "text" || stamp.flatMap(Timestamp.date(from:)) == nil {
+                    problems.append(
+                        "timestamps are written as \(stampType) (\(stamp ?? "unreadable"))"
+                    )
+                }
+            } else {
+                problems.append("the probe row could not be read back")
+            }
+
+            return .rollback
+        }
+
+        guard problems.isEmpty else {
+            let summary = problems.joined(separator: "; ")
+            log.error("the database encoding is wrong: \(summary, privacy: .public)")
+            throw DatabaseError.encodingMismatch(summary)
+        }
+    }
+
+    /// Reads a column without converting it, so a value of the wrong type
+    /// reports itself instead of tripping GRDB's conversion trap.
+    private static func text(_ row: Row, _ column: String) -> String? {
+        let value: DatabaseValue = row[column]
+        return String.fromDatabaseValue(value)
     }
 
     /// Opens the shared database. Both the app and the widget call this.
@@ -86,8 +153,20 @@ public final class AppDatabase: Sendable {
         return configuration
     }
 
-    public enum DatabaseError: Error {
+    public enum DatabaseError: Error, LocalizedError {
         case appGroupUnavailable(String)
         case schemaResourceMissing(String)
+        case encodingMismatch(String)
+
+        public var errorDescription: String? {
+            switch self {
+            case .appGroupUnavailable(let identifier):
+                "Группа приложений \(identifier) недоступна."
+            case .schemaResourceMissing(let name):
+                "В сборку не попал файл схемы \(name).sql."
+            case .encodingMismatch(let detail):
+                "База пишет данные не в том виде: \(detail)."
+            }
+        }
     }
 }
