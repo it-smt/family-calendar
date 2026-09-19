@@ -148,13 +148,42 @@ async def test_the_server_replaces_the_stand_in_rows(api):
     """They lose to the real ones on the first pull, by ordinary last-write-wins."""
     alice = await register_without_syncing(api, "alice@example.com", "Alice")
     before = alice.db.execute("SELECT name, invite_code FROM households").fetchone()
-    assert before["invite_code"] == ""
+    # The stand-in code is the household's own id, which is unique by
+    # construction — an empty string would collide with the next household's
+    # stand-in, and the unique index on live invite codes would drop one of them.
+    assert before["invite_code"] == alice.household_id
 
     await alice.sync()
 
     household = alice.db.execute("SELECT * FROM households").fetchone()
     user = alice.db.execute("SELECT * FROM users").fetchone()
-    assert household["invite_code"] != ""
+    assert len(household["invite_code"]) == 8
     assert household["updated_at"] > wire_time(datetime.fromtimestamp(0, UTC))
     assert user["display_name"] == "Alice"
     assert alice.dirty_count() == 0
+
+
+async def test_two_households_in_one_database_do_not_collide(api):
+    """The stand-in rows must not be able to knock each other out.
+
+    `invite_code` carries a unique index over live rows, so two households
+    standing in with the same placeholder collide. Written with
+    `INSERT OR IGNORE`, as they first were, the second one is silently dropped
+    — and then every row belonging to it fails the foreign key at COMMIT, which
+    is the original bug wearing a different hat.
+
+    One database holds two households whenever a second account is signed into
+    on a device whose database was not wiped in between.
+    """
+    alice = await register_without_syncing(api, "alice@example.com", "Alice")
+
+    second = str(uuid.uuid4()).upper()
+    alice.household_id = second
+    alice.user_id = str(uuid.uuid4()).upper()
+    alice.write_local_identity()
+
+    rows = alice.db.execute("SELECT id FROM households ORDER BY id").fetchall()
+    assert len(rows) == 2
+
+    alice.create_task("Второй дом")
+    assert [task["title"] for task in alice.live_tasks()] == ["Второй дом"]

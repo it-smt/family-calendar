@@ -1,5 +1,6 @@
-import Foundation
 import FamilyCalendarKit
+import Foundation
+import OSLog
 import SwiftUI
 import WidgetKit
 
@@ -122,6 +123,19 @@ public final class AppEnvironment {
 
     /// Called at launch, and whenever the app comes back to the foreground.
     public func start() {
+        // Again, and cheaply: it is a read when the rows are there. Coming back
+        // to the foreground is the moment a person is about to add something,
+        // and a device that somehow lost these two rows can add nothing at all.
+        do {
+            try LocalIdentity.ensure(
+                in: database, householdID: householdID, userID: currentUserID
+            )
+        } catch {
+            Log.database.error(
+                "could not write the local identity: \(error.localizedDescription, privacy: .public)"
+            )
+        }
+
         monitor.start { [engine] in Task { await engine.schedule() } }
 
         Task { [engine, notifications, currentUserID] in

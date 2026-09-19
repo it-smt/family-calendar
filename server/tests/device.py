@@ -117,21 +117,31 @@ class Device:
         Stamped at the epoch and clean, never dirty: last-write-wins makes the
         server's copy replace these the instant it arrives, and nothing
         invented here is ever pushed.
+
+        The invite code stands in as the household's own identifier rather than
+        as an empty string: `invite_code` carries a unique index, and two
+        households sharing a placeholder would collide.
         """
         stamp = wire_time(datetime.fromtimestamp(0, UTC))
-        self.db.execute(
-            "INSERT OR IGNORE INTO households "
-            "(id, name, invite_code, created_at, updated_at, updated_by, deleted_at, dirty) "
-            "VALUES (?, ?, ?, ?, ?, NULL, NULL, 0)",
-            (self.household_id, "Календарь", "", stamp, stamp),
-        )
-        self.db.execute(
-            "INSERT OR IGNORE INTO users "
-            "(id, household_id, display_name, color, created_at, updated_at, "
-            "updated_by, deleted_at, dirty) "
-            "VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, 0)",
-            (self.user_id, self.household_id, "Я", "#3478F6", stamp, stamp),
-        )
+        if not self.db.execute(
+            "SELECT EXISTS (SELECT 1 FROM households WHERE id = ?)", (self.household_id,)
+        ).fetchone()[0]:
+            self.db.execute(
+                "INSERT INTO households "
+                "(id, name, invite_code, created_at, updated_at, updated_by, deleted_at, dirty) "
+                "VALUES (?, ?, ?, ?, ?, NULL, NULL, 0)",
+                (self.household_id, "Календарь", self.household_id, stamp, stamp),
+            )
+        if not self.db.execute(
+            "SELECT EXISTS (SELECT 1 FROM users WHERE id = ?)", (self.user_id,)
+        ).fetchone()[0]:
+            self.db.execute(
+                "INSERT INTO users "
+                "(id, household_id, display_name, color, created_at, updated_at, "
+                "updated_by, deleted_at, dirty) "
+                "VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, 0)",
+                (self.user_id, self.household_id, "Я", "#3478F6", stamp, stamp),
+            )
         self.db.commit()
 
     def close(self) -> None:

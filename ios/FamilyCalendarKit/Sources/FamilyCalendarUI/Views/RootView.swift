@@ -148,7 +148,8 @@ public struct SettingsView: View {
             Text(household?.name ?? "Календарь")
                 .font(.body.weight(.medium))
 
-            if let code = household?.inviteCode, !code.isEmpty {
+            if let code = household?.inviteCode,
+                !LocalIdentity.isPlaceholder(inviteCode: code, of: environment.householdID) {
                 HStack(spacing: 10) {
                     Text(code)
                         .font(.system(.title3, design: .monospaced).weight(.bold))
