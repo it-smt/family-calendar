@@ -123,7 +123,12 @@ Build the app alone first. Leave the widget until this compiles.
   mark in the toolbar counts what the other phone has not seen yet.
 
 To watch two phones converge, run a second simulator (**Product → Destination**)
-and **Join** with the invite code from **Setup**.
+and **Join** with the invite code from **Настройки**.
+
+[`CHECK-TOGETHER.md`](CHECK-TOGETHER.md) is the half-hour of it worth doing by
+hand: what two people editing the same task offline actually do to each other,
+and what the app is supposed to say about it. The tests cover the protocol; that
+covers the app.
 
 ## Later: the widget
 
@@ -131,13 +136,22 @@ The widget needs the App Group, which is what lets two processes open one
 database file.
 
 1. **File → New → Target → Widget Extension**, name it `FamilyCalendarWidget`,
-   untick "Include Live Activity" and "Include Configuration Intent".
-2. Delete the files it generates, and add
-   `ios/FamilyCalendarWidget/*.swift` the same way as step 4 — unchecked copy,
-   target `FamilyCalendarWidgetExtension`.
-3. Add `FamilyCalendarKit` to that target's frameworks.
+   untick "Include Live Activity" and "Include Configuration Intent". The
+   repository has both already — `LeaveTimeLiveActivity.swift` is the live
+   activity — and Xcode's versions would only have to be deleted again.
+2. Delete the files it generates, and add `ios/FamilyCalendarWidget/*.swift` the
+   same way as step 4, with target **FamilyCalendarWidgetExtension** ticked.
+   Three files: `FamilyCalendarWidget.swift`, `WidgetEntryView.swift`,
+   `LeaveTimeLiveActivity.swift`.
+3. Add `FamilyCalendarKit` to that target's frameworks (**General → Frameworks
+   and Libraries → +**). Not `FamilyCalendarUI`: the widget draws its own views
+   and has no business with the app's screens.
 4. **Signing & Capabilities → + Capability → App Groups** on *both* targets, and
    add `group.com.example.familycalendar` to each.
+5. On the **FamilyCalendar** target, **Info → + → `Supports Live Activities`** =
+   `YES` (`NSSupportsLiveActivities`). Without it the "when to leave" live
+   activity never starts, and nothing says so — the system simply refuses and
+   the app has no way to tell that from "no route to show".
 
 If App Groups will not turn on — a free Apple account often cannot — the app
 still works completely. It notices, puts the database in its own container, and
