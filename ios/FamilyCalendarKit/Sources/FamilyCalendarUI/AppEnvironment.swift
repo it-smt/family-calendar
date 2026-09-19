@@ -15,6 +15,7 @@ public final class AppEnvironment {
     public let tasks: TaskRepository
     public let subtasks: SubtaskRepository
     public let categories: CategoryRepository
+    public let household: HouseholdRepository
     public let supersededEdits: SupersededEditRepository
     public let shopping: ShoppingRepository
     public let packingTemplates: PackingTemplateRepository
@@ -38,6 +39,14 @@ public final class AppEnvironment {
         self.database = database
         self.householdID = householdID
         self.currentUserID = currentUserID
+
+        // Before anything else. Every other row in the schema points at these
+        // two, so until they exist the database refuses every insert — and a
+        // signed-in person whose database was rebuilt (a reinstall keeps the
+        // Keychain, the database goes) would find an app that adds nothing.
+        try LocalIdentity.ensure(
+            in: database, householdID: householdID, userID: currentUserID
+        )
 
         let status = SyncStatus()
         self.status = status
@@ -94,6 +103,7 @@ public final class AppEnvironment {
             currentUserID: currentUserID,
             onLocalChange: requestSync
         )
+        self.household = HouseholdRepository(database: database, householdID: householdID)
         self.supersededEdits = SupersededEditRepository(database: database)
         self.shopping = ShoppingRepository(
             database: database,

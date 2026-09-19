@@ -28,7 +28,9 @@ public struct CategoriesView: View {
                     editor
                 }
 
-                if !categories.isEmpty {
+                if categories.isEmpty {
+                    starterOffer
+                } else {
                     VStack(spacing: 8) {
                         SectionLabel(plural(categories.count, "категория", "категории", "категорий"))
                         ForEach(categories) { category in
@@ -122,6 +124,41 @@ public struct CategoriesView: View {
         .card(tint: Color(hex: newColorHex))
     }
 
+    /// Пять готовых — для дома, который завели до того, как их стали заводить
+    /// сразу, или который однажды удалил все свои.
+    private var starterOffer: some View {
+        VStack(spacing: 10) {
+            Text("Пока ни одной")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                ForEach(Theme.starterCategories, id: \.name) { starter in
+                    Text(starter.name)
+                        .font(.caption)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color(hex: starter.colorHex).opacity(0.18), in: Capsule())
+                        .foregroundStyle(Color(hex: starter.colorHex))
+                }
+            }
+            Button("Завести эти пять") {
+                withAnimation(.snappy) {
+                    localWrite("seeding the starter categories") {
+                        try environment.categories.seedStarterCategories(
+                            Theme.starterCategories
+                        )
+                    }
+                }
+            }
+            .font(.subheadline.weight(.semibold))
+            .buttonStyle(.plain)
+            .foregroundStyle(Theme.swatchColor(5))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 22)
+        .card()
+    }
+
     private func row(_ category: TaskCategory) -> some View {
         HStack(spacing: 12) {
             Circle()
@@ -130,7 +167,11 @@ public struct CategoriesView: View {
             Text(category.name)
             Spacer(minLength: 0)
             Button(role: .destructive) {
-                withAnimation(.snappy) { try? environment.categories.delete(category) }
+                withAnimation(.snappy) {
+                    localWrite("deleting a category") {
+                        try environment.categories.delete(category)
+                    }
+                }
             } label: {
                 Image(systemName: "trash")
                     .font(.system(size: 14, weight: .semibold))
@@ -148,9 +189,11 @@ public struct CategoriesView: View {
     private func add() {
         guard !trimmedName.isEmpty else { return }
         withAnimation(.snappy) {
-            try? environment.categories.create(
-                name: trimmedName, colorHex: newColorHex, icon: nil
-            )
+            localWrite("creating a category") {
+                try environment.categories.create(
+                    name: trimmedName, colorHex: newColorHex, icon: nil
+                )
+            }
         }
         newName = ""
         // Следующий цвет — следующий в палитре, чтобы две подряд заведённые

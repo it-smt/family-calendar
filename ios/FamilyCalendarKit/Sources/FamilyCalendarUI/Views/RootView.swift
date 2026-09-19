@@ -1,5 +1,10 @@
 import FamilyCalendarKit
+import OSLog
 import SwiftUI
+
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Четыре вкладки, потому что дел всего четыре.
 public struct RootView: View {
@@ -50,6 +55,10 @@ public struct RootView: View {
 
 /// Категории, шаблоны сборов и то, насколько отстал второй телефон.
 public struct SettingsView: View {
+    @State private var household: Household?
+    @State private var copied = false
+    @State private var observation: Task<Void, Never>?
+
     private let environment: AppEnvironment
 
     public init(environment: AppEnvironment) {
@@ -63,6 +72,11 @@ public struct SettingsView: View {
                     Theme.ScreenHeader("Настройки", gradient: Theme.settingsGradient)
 
                     VStack(alignment: .leading, spacing: 18) {
+                        VStack(spacing: 8) {
+                            SectionLabel("Позвать второго")
+                            inviteCard
+                        }
+
                         VStack(spacing: 8) {
                             SectionLabel("Что настраивать")
                             NavigationLink {
@@ -104,6 +118,77 @@ public struct SettingsView: View {
                 }
             }
             .headeredScreen()
+            .task {
+                guard observation == nil else { return }
+                observation = Task {
+                    do {
+                        for try await value in environment.household.observe() {
+                            household = value
+                        }
+                    } catch {
+                        Log.database.error(
+                            "household observation ended: \(error.localizedDescription, privacy: .public)"
+                        )
+                    }
+                }
+            }
+            .onDisappear {
+                observation?.cancel()
+                observation = nil
+            }
+        }
+    }
+
+    /// The invite code, which is the only way the second person gets in.
+    ///
+    /// It arrives with the first sync; until then there is nothing to show and
+    /// saying so is better than showing an empty box.
+    private var inviteCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(household?.name ?? "Календарь")
+                .font(.body.weight(.medium))
+
+            if let code = household?.inviteCode, !code.isEmpty {
+                HStack(spacing: 10) {
+                    Text(code)
+                        .font(.system(.title3, design: .monospaced).weight(.bold))
+                        .kerning(2)
+                    Spacer(minLength: 0)
+                    Button {
+                        copy(code)
+                    } label: {
+                        Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 32, height: 32)
+                            .background(
+                                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                    .fill(Theme.swatchColor(6))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Скопировать код")
+                }
+                Text("Второй ставит приложение, выбирает «Присоединиться» и вводит этот код.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Код появится после первой синхронизации.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .card(tint: Theme.swatchColor(6))
+    }
+
+    private func copy(_ code: String) {
+        #if canImport(UIKit)
+        UIPasteboard.general.string = code
+        #endif
+        withAnimation(.snappy) { copied = true }
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            withAnimation(.snappy) { copied = false }
         }
     }
 

@@ -50,7 +50,11 @@ public struct ShoppingListView: View {
                 SyncIndicator(status: environment.status)
                 if items.contains(where: \.isBought) {
                     Button {
-                        withAnimation(.snappy) { try? environment.shopping.clearBought() }
+                        withAnimation(.snappy) {
+                            localWrite("clearing bought items") {
+                                try environment.shopping.clearBought()
+                            }
+                        }
                     } label: {
                         Image(systemName: "checklist.checked")
                             .font(.system(size: 17, weight: .semibold))
@@ -130,7 +134,9 @@ public struct ShoppingListView: View {
     private func row(_ item: ShoppingItem) -> some View {
         Button {
             withAnimation(.snappy) {
-                try? environment.shopping.setBought(item, !item.isBought)
+                localWrite("marking a shopping item") {
+                    try environment.shopping.setBought(item, !item.isBought)
+                }
             }
         } label: {
             HStack(spacing: 12) {
@@ -157,7 +163,9 @@ public struct ShoppingListView: View {
         .opacity(item.isBought ? 0.6 : 1)
         .contextMenu {
             Button(role: .destructive) {
-                try? environment.shopping.delete(item)
+                localWrite("deleting a shopping item") {
+                    try environment.shopping.delete(item)
+                }
             } label: {
                 Label("Удалить", systemImage: "trash")
             }
@@ -167,7 +175,11 @@ public struct ShoppingListView: View {
     private func add() {
         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        withAnimation(.snappy) { try? environment.shopping.add(title: trimmed) }
+        withAnimation(.snappy) {
+            localWrite("adding a shopping item") {
+                try environment.shopping.add(title: trimmed)
+            }
+        }
         draft = ""
         // Остаёмся в поле: добавляют обычно не одно.
         addingFocused = true

@@ -199,10 +199,14 @@ public final class TaskEditorViewModel {
     }
 
     public func toggle(_ subtask: Subtask) {
-        try? environment.subtasks.setDone(subtask, !subtask.isDone)
+        localWrite("marking a subtask") {
+            try environment.subtasks.setDone(subtask, !subtask.isDone)
+        }
     }
 
     public func delete(_ subtask: Subtask) {
-        try? environment.subtasks.delete(subtask)
+        localWrite("deleting a subtask") {
+            try environment.subtasks.delete(subtask)
+        }
     }
 }

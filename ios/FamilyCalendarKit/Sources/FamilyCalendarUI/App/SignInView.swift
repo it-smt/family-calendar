@@ -215,6 +215,29 @@ public struct SignInView: View {
                 password: password
             )
 
+            // The household and the person, written locally before anything
+            // else — with the names just typed, which the first pull will
+            // confirm or correct. Without them the device cannot insert a
+            // single row.
+            //
+            // Not fatal here, and deliberately not part of the `catch` below:
+            // the names are a nicety, and `AppEnvironment` writes the same two
+            // rows without them. A failure there is the one worth reporting.
+            do {
+                try LocalIdentity.ensure(
+                    in: database,
+                    householdID: householdID,
+                    userID: userID,
+                    householdName: mode == .register ? householdName : nil,
+                    displayName: displayName,
+                    inviteCode: session.inviteCode
+                )
+            } catch {
+                Log.database.error(
+                    "could not write the local identity: \(error.localizedDescription, privacy: .public)"
+                )
+            }
+
             let environment = try AppEnvironment(
                 database: database,
                 api: api,

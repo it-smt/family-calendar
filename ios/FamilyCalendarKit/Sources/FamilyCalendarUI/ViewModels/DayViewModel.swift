@@ -143,6 +143,8 @@ public final class DayViewModel {
     }
 
     public func dismiss(_ notice: SupersededEdit) {
-        try? environment.supersededEdits.dismiss(notice)
+        localWrite("dismissing a replaced-edit notice") {
+            try environment.supersededEdits.dismiss(notice)
+        }
     }
 }

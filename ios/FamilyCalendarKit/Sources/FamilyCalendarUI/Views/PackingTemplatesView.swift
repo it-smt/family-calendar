@@ -122,7 +122,11 @@ public struct PackingTemplatesView: View {
         .card(tint: tint)
         .contextMenu {
             Button(role: .destructive) {
-                withAnimation(.snappy) { try? environment.packingTemplates.delete(template) }
+                withAnimation(.snappy) {
+                    localWrite("deleting a packing list") {
+                        try environment.packingTemplates.delete(template)
+                    }
+                }
             } label: {
                 Label("Удалить", systemImage: "trash")
             }
@@ -173,7 +177,9 @@ struct PackingTemplateEditor: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Сохранить") {
-                        try? environment.packingTemplates.save(template)
+                        localWrite("saving a packing list") {
+                            try environment.packingTemplates.save(template)
+                        }
                         dismiss()
                     }
                     .disabled(template.name.trimmingCharacters(in: .whitespaces).isEmpty)

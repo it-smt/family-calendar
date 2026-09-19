@@ -102,6 +102,36 @@ class Device:
         self._supersede_statements = {
             path.stem: path.read_text() for path in SUPERSEDE_SQL.glob("*.sql")
         }
+        self.write_local_identity()
+
+    def write_local_identity(self) -> None:
+        """The transcription of `LocalIdentity.ensure` in the Swift client.
+
+        Every table in the schema carries `household_id NOT NULL REFERENCES
+        households (id)`, and foreign keys are on. Until these two rows exist
+        the device cannot insert anything at all — so the app writes them at
+        sign-in, from the auth response, rather than waiting for the first pull
+        to bring them.
+
+        Stamped at the epoch and clean, never dirty: last-write-wins makes the
+        server's copy replace these the instant it arrives, and nothing
+        invented here is ever pushed.
+        """
+        stamp = wire_time(datetime.fromtimestamp(0, UTC))
+        self.db.execute(
+            "INSERT OR IGNORE INTO households "
+            "(id, name, invite_code, created_at, updated_at, updated_by, deleted_at, dirty) "
+            "VALUES (?, ?, ?, ?, ?, NULL, NULL, 0)",
+            (self.household_id, "Календарь", "", stamp, stamp),
+        )
+        self.db.execute(
+            "INSERT OR IGNORE INTO users "
+            "(id, household_id, display_name, color, created_at, updated_at, "
+            "updated_by, deleted_at, dirty) "
+            "VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, 0)",
+            (self.user_id, self.household_id, "Я", "#3478F6", stamp, stamp),
+        )
+        self.db.commit()
 
     def close(self) -> None:
         self.db.close()
