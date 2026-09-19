@@ -285,7 +285,7 @@ public struct TaskEditorView: View {
                     .frame(width: 9, height: 9)
                 Text(title)
                     .font(.subheadline.weight(.medium))
-                    .foregroundStyle(isSelected ? Color.white : .primary)
+                    .foregroundStyle(isSelected ? Color.white : Color.primary)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 7)

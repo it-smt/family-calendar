@@ -400,9 +400,12 @@ public struct DayView: View {
                 Text(day.formatted(.dateTime.day()))
                     .font(.system(size: 14, weight: isToday ? .bold : .regular, design: .rounded))
                     .monospacedDigit()
-                    .foregroundStyle(
-                        isSelected ? Color.white : (inMonth ? .primary : .tertiary)
-                    )
+                    // Цвет и приглушённость раздельно: `Color` знает `.primary`
+                    // и `.secondary`, но не `.tertiary` — это иерархический
+                    // стиль, и в одной тернарной операции с `Color.white` он не
+                    // сходится по типу.
+                    .foregroundStyle(isSelected ? Color.white : Color.primary)
+                    .opacity(inMonth ? 1 : 0.35)
 
                 HStack(spacing: 2) {
                     ForEach(Array(colours.enumerated()), id: \.offset) { _, colour in
