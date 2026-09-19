@@ -30,6 +30,7 @@ CLIENT_MIGRATIONS = [
     CLIENT_SQL / "v3_route_cache.sql",
     CLIENT_SQL / "v4_activity_notified.sql",
     CLIENT_SQL / "v5_drop_apns_token.sql",
+    CLIENT_SQL / "v6_date_the_dateless_tasks.sql",
 ]
 
 

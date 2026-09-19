@@ -18,7 +18,13 @@ public final class TaskEditorViewModel {
 
     public var title: String = ""
     public var notes: String = ""
-    public var hasTime: Bool = false
+    /// Every task has a day. The only question is whether it also has a time.
+    ///
+    /// There used to be a third state — no date at all — and a task in it was
+    /// saved correctly and then shown by nothing: the day list asks for the
+    /// tasks whose `starts_at` falls inside the day, and a NULL falls inside
+    /// no day. Removing the state is the fix; a screen must not be able to
+    /// make a row that no screen can show.
     public var startsAt: Date = Date()
     public var durationMinutes: Int = 60
     public var isAllDay: Bool = false
@@ -47,10 +53,11 @@ public final class TaskEditorViewModel {
         case .editing(let task):
             title = task.title
             notes = task.notes ?? ""
-            hasTime = task.startsAt != nil
             startsAt = task.startsAt ?? Self.defaultTime(on: day)
             durationMinutes = task.durationMinutes ?? 60
-            isAllDay = task.isAllDay
+            // A row from before every task had a date reads as all-day, which
+            // is what the repair migration makes of it too.
+            isAllDay = task.isAllDay || task.startsAt == nil
             categoryID = task.categoryID
             assigneeID = task.assigneeID
             travelMode = task.travelMode
@@ -77,7 +84,10 @@ public final class TaskEditorViewModel {
         let now = Date()
         // The chosen day, at the next round hour.
         var components = calendar.dateComponents([.year, .month, .day], from: day)
-        components.hour = calendar.component(.hour, from: now) + 1
+        // Clamped, or a task added at half past eleven would default to
+        // midnight — which is the next day, and therefore not the day the
+        // person is looking at.
+        components.hour = min(calendar.component(.hour, from: now) + 1, 23)
         components.minute = 0
         return calendar.date(from: components) ?? day
     }
@@ -147,6 +157,11 @@ public final class TaskEditorViewModel {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
+        // An all-day task is stored at the start of its day rather than with no
+        // time at all, so the day list finds it the same way it finds every
+        // other task, and it sorts to the top of the day where it belongs.
+        let when = isAllDay ? Calendar.current.startOfDay(for: startsAt) : startsAt
+
         do {
             switch mode {
             case .creating:
@@ -154,8 +169,8 @@ public final class TaskEditorViewModel {
                     householdID: environment.householdID,
                     title: trimmed,
                     notes: notes.isEmpty ? nil : notes,
-                    startsAt: hasTime ? startsAt : nil,
-                    durationMinutes: hasTime ? durationMinutes : nil,
+                    startsAt: when,
+                    durationMinutes: isAllDay ? nil : durationMinutes,
                     isAllDay: isAllDay,
                     locationName: locationName.isEmpty ? nil : locationName,
                     assigneeID: assigneeID,
@@ -169,8 +184,8 @@ public final class TaskEditorViewModel {
                 try environment.tasks.update(task) { draft in
                     draft.title = trimmed
                     draft.notes = notes.isEmpty ? nil : notes
-                    draft.startsAt = hasTime ? startsAt : nil
-                    draft.durationMinutes = hasTime ? durationMinutes : nil
+                    draft.startsAt = when
+                    draft.durationMinutes = isAllDay ? nil : durationMinutes
                     draft.isAllDay = isAllDay
                     draft.locationName = locationName.isEmpty ? nil : locationName
                     draft.assigneeID = assigneeID

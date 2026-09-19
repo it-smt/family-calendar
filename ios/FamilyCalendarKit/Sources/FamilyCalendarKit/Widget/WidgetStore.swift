@@ -58,25 +58,14 @@ public struct WidgetStore: Sendable {
         // the same instants the alerts were scheduled for.
         var lines: [WidgetSnapshot.TaskLine] = []
         for task in tasks {
-            for occurrence in Recurrence.occurrences(of: task, in: startOfDay..<endOfDay) {
-                lines.append(
-                    WidgetSnapshot.TaskLine(
-                        id: task.id,
-                        title: task.title,
-                        startsAt: occurrence,
-                        isAllDay: task.isAllDay,
-                        isCompleted: task.isCompleted,
-                        assigneeID: task.assigneeID,
-                        colorHex: task.categoryID.flatMap { colours[$0] },
-                        locationName: task.locationName,
-                        leaveBy: estimates[task.id].map {
-                            Travel.leaveTime(for: occurrence, estimate: $0)
-                        }
-                    )
-                )
-            }
-            // All-day tasks have no instant to expand.
-            if task.startsAt == nil && task.isAllDay {
+            // An all-day task is stored at the start of its day so that the
+            // day list can find it, but it has no instant to show and none to
+            // expand: it either belongs to today or it does not. A row left
+            // over from when a task could have no date at all belongs to no
+            // day, and is shown today rather than never.
+            if task.isAllDay {
+                let today = task.startsAt.map { $0 >= startOfDay && $0 < endOfDay } ?? true
+                guard today else { continue }
                 lines.append(
                     WidgetSnapshot.TaskLine(
                         id: task.id,
@@ -87,6 +76,25 @@ public struct WidgetStore: Sendable {
                         assigneeID: task.assigneeID,
                         colorHex: task.categoryID.flatMap { colours[$0] },
                         locationName: task.locationName
+                    )
+                )
+                continue
+            }
+
+            for occurrence in Recurrence.occurrences(of: task, in: startOfDay..<endOfDay) {
+                lines.append(
+                    WidgetSnapshot.TaskLine(
+                        id: task.id,
+                        title: task.title,
+                        startsAt: occurrence,
+                        isAllDay: false,
+                        isCompleted: task.isCompleted,
+                        assigneeID: task.assigneeID,
+                        colorHex: task.categoryID.flatMap { colours[$0] },
+                        locationName: task.locationName,
+                        leaveBy: estimates[task.id].map {
+                            Travel.leaveTime(for: occurrence, estimate: $0)
+                        }
                     )
                 )
             }

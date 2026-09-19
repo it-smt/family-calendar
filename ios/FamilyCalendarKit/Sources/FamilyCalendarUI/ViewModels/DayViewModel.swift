@@ -56,11 +56,20 @@ public final class DayViewModel {
     public var nextTask: CalendarTask? {
         guard Calendar.current.isDateInToday(day) else { return nil }
         let now = Date()
-        return visibleTasks.first { task in
-            guard !task.isCompleted else { return false }
-            guard let startsAt = task.startsAt else { return task.isAllDay }
+        let unfinished = visibleTasks.filter { !$0.isCompleted }
+
+        // The next thing with a time on it. An all-day task is stored at
+        // midnight, so by the clock it is always in the past — it is not
+        // "next", it is "today".
+        if let timed = unfinished.first(where: { task in
+            guard !task.isAllDay, let startsAt = task.startsAt else { return false }
             return startsAt >= now
+        }) {
+            return timed
         }
+
+        // Nothing left with a time: whatever is on for the day will do.
+        return unfinished.first(where: \.isAllDay)
     }
 
     public func onAppear() {

@@ -129,6 +129,8 @@ public struct DayView: View {
         guard Calendar.current.isDateInToday(model.day) else { return tasks.map(Row.task) }
 
         let now = Date()
+        // All-day tasks sit at midnight, so they fall on the "already passed"
+        // side and the marker lands below them, where the day really is.
         let passed = tasks.prefix { task in (task.startsAt ?? .distantPast) <= now }
         var rows = passed.map(Row.task)
         rows.append(.now)
@@ -261,14 +263,16 @@ struct NextUpCard: View {
                 .frame(width: 5, height: 40)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text("Дальше")
+                // "Дальше" is a claim about the clock, and an all-day task
+                // makes no claim about the clock.
+                Text(task.isAllDay ? "Сегодня" : "Дальше")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(.secondary)
                     .textCase(.uppercase)
                 Text(task.title)
                     .font(.headline)
                     .lineLimit(1)
-                if let startsAt = task.startsAt {
+                if !task.isAllDay, let startsAt = task.startsAt {
                     Text(startsAt, style: .relative)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -277,7 +281,12 @@ struct NextUpCard: View {
 
             Spacer(minLength: 4)
 
-            if let startsAt = task.startsAt {
+            if task.isAllDay {
+                Text("весь\nдень")
+                    .font(.system(size: 13, weight: .semibold))
+                    .multilineTextAlignment(.trailing)
+                    .foregroundStyle(.secondary)
+            } else if let startsAt = task.startsAt {
                 Text(startsAt, style: .time)
                     .font(.system(size: 24, weight: .semibold, design: .rounded))
                     .monospacedDigit()
@@ -366,7 +375,9 @@ struct TimelineRow: View {
     }
 
     private var timeLabel: String {
-        guard let startsAt = task.startsAt else { return task.isAllDay ? "весь\nдень" : "—" }
+        // An all-day task is stored at midnight, which is a time nobody meant.
+        if task.isAllDay { return "весь\nдень" }
+        guard let startsAt = task.startsAt else { return "—" }
         return startsAt.formatted(date: .omitted, time: .shortened)
     }
 }

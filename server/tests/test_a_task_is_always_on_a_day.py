@@ -1,0 +1,132 @@
+"""The day list finds a task by its date, so a task without one is invisible.
+
+`TaskRepository.tasksOnDay` asks for the rows whose `starts_at` falls inside the
+day. The editor used to allow a task with no date at all — neither a time nor
+"all day" — and such a row was written to the database successfully and then
+shown by no screen in the app: not that day, not any other day, not the widget.
+Nothing reported it, because nothing had failed.
+
+The editor no longer offers that state: every task has a day, and "all day"
+means midnight on it rather than no time at all. These tests are the day
+window, transcribed, held against rows written the way the app writes them.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import UTC, datetime, timedelta
+
+import pytest
+
+from tests.device import CLIENT_ROOT, Device, wire_time
+from tests.test_first_run_works_offline import register_without_syncing
+from tests.test_offline_convergence import PASSWORD, enrol
+
+
+def repair(device: Device) -> None:
+    """The v6 migration, run the way `DatabaseMigrator` runs it."""
+    device.db.executescript(
+        (CLIENT_ROOT / "SQL/v6_date_the_dateless_tasks.sql").read_text()
+    )
+
+
+def day_window(day: datetime) -> tuple[str, str]:
+    """`tasksOnDay`: from the start of the day to the start of the next."""
+    start = day.replace(hour=0, minute=0, second=0, microsecond=0)
+    return wire_time(start), wire_time(start + timedelta(days=1))
+
+
+def tasks_on_day(device: Device, day: datetime) -> list[str]:
+    start, end = day_window(day)
+    rows = device.db.execute(
+        "SELECT title FROM tasks "
+        "WHERE deleted_at IS NULL AND starts_at >= ? AND starts_at < ? "
+        "ORDER BY starts_at",
+        (start, end),
+    )
+    return [row["title"] for row in rows]
+
+
+async def test_a_task_with_a_time_is_on_its_day(api):
+    device = await register_without_syncing(api, "alice@example.com", "Alice")
+    day = datetime(2026, 9, 20, tzinfo=UTC)
+    device.create_task("Врач", starts_at=wire_time(day.replace(hour=16)))
+
+    assert tasks_on_day(device, day) == ["Врач"]
+    assert tasks_on_day(device, day + timedelta(days=1)) == []
+
+
+async def test_an_all_day_task_sits_at_midnight_and_is_found(api):
+    """How the editor now saves "весь день": the start of the day, not nothing."""
+    device = await register_without_syncing(api, "alice@example.com", "Alice")
+    day = datetime(2026, 9, 20, tzinfo=UTC)
+    device.create_task("Дача", starts_at=wire_time(day), is_all_day=1)
+
+    assert tasks_on_day(device, day) == ["Дача"]
+
+
+async def test_an_all_day_task_sorts_above_the_timed_ones(api):
+    device = await register_without_syncing(api, "alice@example.com", "Alice")
+    day = datetime(2026, 9, 20, tzinfo=UTC)
+    device.create_task("Врач", starts_at=wire_time(day.replace(hour=16)))
+    device.create_task("Дача", starts_at=wire_time(day), is_all_day=1)
+
+    assert tasks_on_day(device, day) == ["Дача", "Врач"]
+
+
+async def test_a_task_with_no_date_is_on_no_day_at_all(api):
+    """Why the editor cannot make one any more, stated as a test."""
+    device = await register_without_syncing(api, "alice@example.com", "Alice")
+    device.create_task("Ни на каком дне")
+
+    days = [datetime(2026, 9, 18, tzinfo=UTC) + timedelta(days=n) for n in range(-400, 400)]
+    assert all(tasks_on_day(device, day) == [] for day in days)
+
+
+async def test_the_repair_puts_an_old_dateless_task_on_a_day(api):
+    """v6, against a row written the way the broken build wrote them."""
+    device = await register_without_syncing(api, "alice@example.com", "Alice")
+    created = datetime(2026, 9, 18, 11, 30, tzinfo=UTC)
+    device.create_task("Из старой сборки", created_at=wire_time(created))
+    assert tasks_on_day(device, created) == []
+
+    repair(device)
+
+    assert tasks_on_day(device, created) == ["Из старой сборки"]
+    row = device.db.execute("SELECT * FROM tasks").fetchone()
+    assert row["is_all_day"] == 1
+    assert row["dirty"] == 1
+
+
+async def test_the_repair_reaches_the_other_phone(api):
+    """It is marked dirty, so the correction is pushed like any other edit."""
+    device = await register_without_syncing(api, "alice@example.com", "Alice")
+    created = datetime(2026, 9, 18, 11, 30, tzinfo=UTC)
+    task_id = device.create_task("Из старой сборки", created_at=wire_time(created))
+    repair(device)
+
+    await device.sync()
+
+    invite = (
+        await api.post(
+            "/auth/login",
+            json={"email": "alice@example.com", "password": PASSWORD},
+        )
+    ).json()["invite_code"]
+    bob = await enrol(api, "bob@example.com", "Bob", invite_code=invite)
+
+    assert bob.task(task_id)["starts_at"] == "2026-09-18T00:00:00.000Z"
+    assert bob.task(task_id)["is_all_day"] in (1, True)
+
+
+@pytest.mark.parametrize("hour", [0, 11, 23])
+async def test_the_repair_leaves_a_dated_task_alone(api, hour: int):
+    device = await register_without_syncing(api, "alice@example.com", "Alice")
+    when = wire_time(datetime(2026, 9, 20, hour, tzinfo=UTC))
+    device.create_task("Врач", starts_at=when)
+
+    repair(device)
+
+    row = device.db.execute("SELECT * FROM tasks").fetchone()
+    assert row["starts_at"] == when
+    assert row["is_all_day"] == 0

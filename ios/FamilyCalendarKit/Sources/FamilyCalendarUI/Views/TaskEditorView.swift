@@ -27,16 +27,21 @@ public struct TaskEditorView: View {
                 }
 
                 Section("Когда") {
-                    Toggle("Ко времени", isOn: $model.hasTime.animation())
-                    if model.hasTime {
-                        DatePicker("Начало", selection: $model.startsAt)
+                    // Дата есть всегда. Раньше её можно было не ставить — и
+                    // задача сохранялась в базу, которую ни один экран не
+                    // показывает: день ищет задачи по дате, а её не было.
+                    Toggle("Весь день", isOn: $model.isAllDay.animation())
+                    DatePicker(
+                        "Когда",
+                        selection: $model.startsAt,
+                        displayedComponents: model.isAllDay ? [.date] : [.date, .hourAndMinute]
+                    )
+                    if !model.isAllDay {
                         Picker("Длится", selection: $model.durationMinutes) {
                             ForEach([15, 30, 45, 60, 90, 120, 180], id: \.self) { minutes in
                                 Text(durationLabel(minutes)).tag(minutes)
                             }
                         }
-                    } else {
-                        Toggle("Весь день", isOn: $model.isAllDay)
                     }
                 }
 
