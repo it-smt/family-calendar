@@ -19,6 +19,21 @@ public struct DayItem: Identifiable, Sendable {
     public var isRepeating: Bool { task.rrule != nil }
 }
 
+/// Насколько широко смотрим.
+public enum CalendarScale: String, CaseIterable, Sendable, Identifiable {
+    case day, week, month
+
+    public var id: String { rawValue }
+
+    public var label: String {
+        switch self {
+        case .day: "День"
+        case .week: "Неделя"
+        case .month: "Месяц"
+        }
+    }
+}
+
 /// The day list.
 ///
 /// Reads the database and nothing else. A change from the partner arrives by
@@ -39,8 +54,53 @@ public final class DayViewModel {
 
     public var day: Date {
         didSet {
-            guard !Calendar.current.isDate(day, inSameDayAs: oldValue) else { return }
+            // Неделя и месяц перечитываются только когда сменился их отрезок,
+            // а не на каждый выбранный день внутри него.
+            guard !Calendar.current.isDate(day, equalTo: oldValue, toGranularity: granularity)
+            else { return }
             restartTaskObservation()
+        }
+    }
+
+    public var scale: CalendarScale = .day {
+        didSet {
+            guard scale != oldValue else { return }
+            restartTaskObservation()
+        }
+    }
+
+    private var granularity: Calendar.Component {
+        switch scale {
+        case .day: .day
+        case .week: .weekOfYear
+        case .month: .month
+        }
+    }
+
+    /// Отрезок, который сейчас читается из базы.
+    public var range: Range<Date> {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: day)
+
+        switch scale {
+        case .day:
+            return start..<(calendar.date(byAdding: .day, value: 1, to: start) ?? start)
+        case .week:
+            guard let week = calendar.dateInterval(of: .weekOfYear, for: day) else {
+                return start..<start
+            }
+            return week.start..<week.end
+        case .month:
+            // Сетка месяца показывает и хвосты соседних месяцев, поэтому
+            // читается вся она, а не календарный месяц.
+            guard
+                let month = calendar.dateInterval(of: .month, for: day),
+                let first = calendar.dateInterval(of: .weekOfYear, for: month.start),
+                let last = calendar.dateInterval(
+                    of: .weekOfYear, for: month.end.addingTimeInterval(-1)
+                )
+            else { return start..<start }
+            return first.start..<last.end
         }
     }
 
@@ -58,21 +118,31 @@ public final class DayViewModel {
         self.day = day
     }
 
-    /// Today's lines: every task that falls on this day, repeats expanded.
-    public var visibleItems: [DayItem] {
-        let calendar = Calendar.current
-        let start = calendar.startOfDay(for: day)
-        guard let end = calendar.date(byAdding: .day, value: 1, to: start) else { return [] }
-
+    /// Всё, что попадает в отрезок, с развёрнутыми повторами.
+    public var items: [DayItem] {
+        let window = range
         var items: [DayItem] = []
         for task in tasks {
             if let categoryFilter, task.categoryID != categoryFilter { continue }
             if let assigneeFilter, task.assigneeID != assigneeFilter { continue }
-            for occurrence in Recurrence.occurrences(of: task, in: start..<end) {
+            for occurrence in Recurrence.occurrences(of: task, in: window) {
                 items.append(DayItem(task: task, occurrence: occurrence))
             }
         }
         return items.sorted { $0.occurrence < $1.occurrence }
+    }
+
+    /// Строки выбранного дня — то, что показывает режим «День».
+    public var visibleItems: [DayItem] {
+        let calendar = Calendar.current
+        guard scale != .day else { return items }
+        return items.filter { calendar.isDate($0.occurrence, inSameDayAs: day) }
+    }
+
+    /// Разложенные по дням — для недели и для сетки месяца.
+    public var itemsByDay: [Date: [DayItem]] {
+        let calendar = Calendar.current
+        return Dictionary(grouping: items) { calendar.startOfDay(for: $0.occurrence) }
     }
 
     public var unfinishedCount: Int {
@@ -122,9 +192,12 @@ public final class DayViewModel {
 
     private func restartTaskObservation() {
         taskObservation?.cancel()
-        taskObservation = Task { [environment, day] in
+        let window = range
+        taskObservation = Task { [environment, window] in
             do {
-                for try await value in environment.tasks.tasksTouching(day) {
+                for try await value in environment.tasks.tasksTouching(
+                    from: window.lowerBound, to: window.upperBound
+                ) {
                     self.tasks = value
                 }
             } catch {

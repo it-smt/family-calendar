@@ -33,11 +33,15 @@ public struct TaskRepository: Sendable {
     public func tasksTouching(
         _ day: Date, calendar: Calendar = .current
     ) -> AsyncValueObservation<[CalendarTask]> {
-        let start = Timestamp.string(from: calendar.startOfDay(for: day))
-        let end = Timestamp.string(
-            from: calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: day))
-                ?? calendar.startOfDay(for: day)
-        )
+        let start = calendar.startOfDay(for: day)
+        let end = calendar.date(byAdding: .day, value: 1, to: start) ?? start
+        return tasksTouching(from: start, to: end)
+    }
+
+    /// The same, over any stretch — a week, a month.
+    public func tasksTouching(from: Date, to: Date) -> AsyncValueObservation<[CalendarTask]> {
+        let start = Timestamp.string(from: from)
+        let end = Timestamp.string(from: to)
 
         return ValueObservation
             .tracking { db in

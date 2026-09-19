@@ -24,7 +24,11 @@ public struct DayView: View {
                 VStack(spacing: 0) {
                     header
                     notices
-                    timeline
+                    switch model.scale {
+                    case .day: timeline
+                    case .week: weekList
+                    case .month: monthGrid
+                    }
                 }
             }
             .contentBackground()
@@ -47,12 +51,14 @@ public struct DayView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(model.day.formatted(.dateTime.weekday(.wide)))
+                    Text(subtitleText)
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.white.opacity(0.8))
-                    Text(model.day.formatted(.dateTime.day().month(.wide)))
+                    Text(titleText)
                         .font(.system(size: 32, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                 }
 
                 Spacer()
@@ -70,9 +76,18 @@ public struct DayView: View {
                 .padding(.top, 4)
             }
 
-            WeekStrip(selected: $model.day)
+            Picker("", selection: $model.scale.animation(.snappy)) {
+                ForEach(CalendarScale.allCases) { scale in
+                    Text(scale.label).tag(scale)
+                }
+            }
+            .pickerStyle(.segmented)
 
-            if let next = model.nextItem {
+            if model.scale != .month {
+                WeekStrip(selected: $model.day)
+            }
+
+            if model.scale == .day, let next = model.nextItem {
                 NextUpCard(
                     item: next,
                     category: next.task.categoryID.flatMap { model.categories[$0] }
@@ -196,6 +211,221 @@ public struct DayView: View {
         }
     }
 
+    // MARK: Заголовок
+
+    private var titleText: String {
+        switch model.scale {
+        case .day:
+            model.day.formatted(.dateTime.day().month(.wide))
+        case .week:
+            weekTitle
+        case .month:
+            model.day.formatted(.dateTime.month(.wide).year())
+        }
+    }
+
+    private var subtitleText: String {
+        switch model.scale {
+        case .day: model.day.formatted(.dateTime.weekday(.wide))
+        case .week: "Неделя"
+        case .month: plural(model.items.count, "дело", "дела", "дел")
+        }
+    }
+
+    private var weekTitle: String {
+        let calendar = Calendar.current
+        let range = model.range
+        let last = calendar.date(byAdding: .day, value: -1, to: range.upperBound)
+            ?? range.upperBound
+        let sameMonth = calendar.isDate(range.lowerBound, equalTo: last, toGranularity: .month)
+        let from = sameMonth
+            ? range.lowerBound.formatted(.dateTime.day())
+            : range.lowerBound.formatted(.dateTime.day().month(.abbreviated))
+        return "\(from) – \(last.formatted(.dateTime.day().month(.abbreviated)))"
+    }
+
+    // MARK: Неделя
+
+    /// Семь дней подряд. Сетка на телефоне помещает по три слова в клетку, а
+    /// список — целое дело, и именно его и надо прочитать.
+    private var weekList: some View {
+        let calendar = Calendar.current
+        let byDay = model.itemsByDay
+        let days = stride(from: 0, to: 7, by: 1).compactMap {
+            calendar.date(byAdding: .day, value: $0, to: model.range.lowerBound)
+        }
+
+        return LazyVStack(alignment: .leading, spacing: 18) {
+            ForEach(days, id: \.self) { day in
+                let lines = byDay[calendar.startOfDay(for: day)] ?? []
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        SectionLabel(day.formatted(.dateTime.weekday(.wide).day().month()))
+                        if calendar.isDateInToday(day) {
+                            Text("сегодня")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.red)
+                        }
+                    }
+
+                    if lines.isEmpty {
+                        Text("Свободно")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .padding(.leading, 4)
+                    } else {
+                        ForEach(lines) { item in
+                            compactRow(item)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 20)
+        .padding(.bottom, 28)
+    }
+
+    private func compactRow(_ item: DayItem) -> some View {
+        let category = item.task.categoryID.flatMap { model.categories[$0] }
+        let tint = category.map { Color(hex: $0.colorHex) } ?? Theme.unlabelled
+        return HStack(spacing: 10) {
+            Text(item.task.isAllDay ? "весь день" : item.occurrence.formatted(date: .omitted, time: .shortened))
+                .font(.caption.weight(.medium))
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .frame(width: 62, alignment: .leading)
+
+            Text(item.task.title)
+                .font(.subheadline)
+                .strikethrough(item.task.isCompleted)
+                .foregroundStyle(item.task.isCompleted ? .secondary : .primary)
+                .lineLimit(1)
+
+            Spacer(minLength: 0)
+
+            if item.isRepeating {
+                Image(systemName: "repeat").font(.system(size: 9)).foregroundStyle(.tertiary)
+            }
+            if let assignee = item.task.assigneeID.flatMap({ model.people[$0] }) {
+                Circle()
+                    .fill(Color(hex: assignee.color))
+                    .frame(width: 8, height: 8)
+                    .accessibilityLabel(assignee.displayName)
+            }
+        }
+        .card(tint: tint)
+        .opacity(item.task.isCompleted ? 0.6 : 1)
+        .onTapGesture { editing = .editing(item.task) }
+    }
+
+    // MARK: Месяц
+
+    /// Сетка и под ней выбранный день. Точки в клетке — цвета категорий: по
+    /// ним видно, какой день чем занят, не открывая его.
+    private var monthGrid: some View {
+        let calendar = Calendar.current
+        let byDay = model.itemsByDay
+        let days = stride(from: 0, to: monthDayCount, by: 1).compactMap {
+            calendar.date(byAdding: .day, value: $0, to: model.range.lowerBound)
+        }
+        let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 7)
+
+        return VStack(alignment: .leading, spacing: 16) {
+            LazyVGrid(columns: columns, spacing: 4) {
+                ForEach(weekdayNames, id: \.self) { name in
+                    Text(name)
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .textCase(.uppercase)
+                }
+
+                ForEach(days, id: \.self) { day in
+                    monthCell(day, lines: byDay[calendar.startOfDay(for: day)] ?? [])
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                SectionLabel(model.day.formatted(.dateTime.weekday(.wide).day().month()))
+                if model.visibleItems.isEmpty {
+                    Text("Свободно")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .padding(.leading, 4)
+                } else {
+                    ForEach(model.visibleItems) { item in
+                        compactRow(item)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 20)
+        .padding(.bottom, 28)
+    }
+
+    private var monthDayCount: Int {
+        let calendar = Calendar.current
+        let range = model.range
+        let days = calendar.dateComponents(
+            [.day], from: range.lowerBound, to: range.upperBound
+        ).day ?? 35
+        return max(days, 0)
+    }
+
+    private var weekdayNames: [String] {
+        let calendar = Calendar.current
+        let symbols = calendar.veryShortWeekdaySymbols
+        // Неделя начинается там, где её начинает система: в России с
+        // понедельника, не везде.
+        let first = calendar.firstWeekday - 1
+        return Array(symbols[first...] + symbols[..<first])
+    }
+
+    private func monthCell(_ day: Date, lines: [DayItem]) -> some View {
+        let calendar = Calendar.current
+        let isSelected = calendar.isDate(day, inSameDayAs: model.day)
+        let isToday = calendar.isDateInToday(day)
+        let inMonth = calendar.isDate(day, equalTo: model.day, toGranularity: .month)
+        let colours = lines.prefix(3).map { item in
+            item.task.categoryID
+                .flatMap { model.categories[$0] }
+                .map { Color(hex: $0.colorHex) } ?? Theme.unlabelled
+        }
+
+        return Button {
+            withAnimation(.snappy) { model.day = day }
+        } label: {
+            VStack(spacing: 3) {
+                Text(day.formatted(.dateTime.day()))
+                    .font(.system(size: 14, weight: isToday ? .bold : .regular, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(
+                        isSelected ? Color.white : (inMonth ? .primary : .tertiary)
+                    )
+
+                HStack(spacing: 2) {
+                    ForEach(Array(colours.enumerated()), id: \.offset) { _, colour in
+                        Circle().fill(isSelected ? Color.white : colour).frame(width: 4, height: 4)
+                    }
+                }
+                .frame(height: 4)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 7)
+            .background {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(Theme.Hour.at(Date()).gradient.from)
+                } else if isToday {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .stroke(Color.red.opacity(0.5), lineWidth: 1)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
     // MARK: Chrome
 
     private var addButton: some View {
@@ -212,7 +442,8 @@ public struct DayView: View {
         .padding(.bottom, 12)
     }
 
-    /// A day either side, because that is how a person flicks through a week.
+    /// Листание вбок — на столько, сколько сейчас показано: день, неделя,
+    /// месяц. Свайп по месяцу на один день был бы свайпом в никуда.
     private var daySwipe: some Gesture {
         DragGesture(minimumDistance: 30)
             .onEnded { value in
@@ -221,9 +452,16 @@ public struct DayView: View {
                 }
                 let step = value.translation.width < -60 ? 1 : (value.translation.width > 60 ? -1 : 0)
                 guard step != 0 else { return }
+
+                let unit: Calendar.Component = switch model.scale {
+                case .day: .day
+                case .week: .weekOfYear
+                case .month: .month
+                }
+
                 withAnimation(.snappy) {
                     model.day = Calendar.current.date(
-                        byAdding: .day, value: step, to: model.day
+                        byAdding: unit, value: step, to: model.day
                     ) ?? model.day
                 }
             }
