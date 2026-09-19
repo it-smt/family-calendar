@@ -15,6 +15,7 @@ from app.db.session import get_session
 from app.schemas.sync import ChangeOut, PullResponse, PushRequest, PushResponse
 from app.sync.apply import AppliedChange, apply_push, read_changes
 from app.sync.registry import WRITABLE_ENTITY_TYPES, spec_for
+from app.sync.retention import prune_activity
 from app.sync.schemas import validate_payload
 from app.push.apns import APNsClient
 from app.push.deps import get_push_client
@@ -113,6 +114,9 @@ async def push(
                 user_id=identity.user_id,
                 changes=prepared,
             )
+            # The household is already locked and the transaction already open,
+            # so the feed is trimmed here rather than by a job nobody runs.
+            await prune_activity(session, identity.household_id)
     except IntegrityError as error:
         constraint = getattr(getattr(error.orig, "__cause__", None), "constraint_name", None)
         log.warning("push rejected: %s", constraint or error.orig)

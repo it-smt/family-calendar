@@ -143,6 +143,20 @@ public final class AppEnvironment {
             )
         }
 
+        // The feed is the one table that only ever grows. The server drops the
+        // same rows by the same rule, so this is not a message to be delivered
+        // — just the same arithmetic on both sides.
+        do {
+            let dropped = try activityFeed.prune()
+            if dropped > 0 {
+                Log.database.info("dropped \(dropped, privacy: .public) old feed entries")
+            }
+        } catch {
+            Log.database.error(
+                "could not prune the feed: \(error.localizedDescription, privacy: .public)"
+            )
+        }
+
         monitor.start { [engine] in Task { await engine.schedule() } }
 
         Task { [engine, notifications, currentUserID] in
