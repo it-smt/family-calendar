@@ -100,7 +100,11 @@ public struct PackingTemplatesView: View {
                     // Первые несколько пунктов прямо на карточке: обычно этого
                     // хватает, чтобы узнать список и не открывать его.
                     HStack(spacing: 6) {
-                        ForEach(template.items.prefix(3), id: \.self) { item in
+                        // По позиции: в списке вещей «носки» вполне могут
+                        // встретиться дважды, и это не ошибка ввода.
+                        ForEach(
+                            Array(template.items.prefix(3).enumerated()), id: \.offset
+                        ) { _, item in
                             Text(item)
                                 .font(.caption)
                                 .lineLimit(1)

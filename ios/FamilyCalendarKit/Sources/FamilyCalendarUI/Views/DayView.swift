@@ -333,7 +333,10 @@ public struct DayView: View {
 
         return VStack(alignment: .leading, spacing: 16) {
             LazyVGrid(columns: columns, spacing: 4) {
-                ForEach(weekdayNames, id: \.self) { name in
+                // По позиции, не по букве: в английской локали очень короткие
+                // названия дней — S M T W T F S, и две пары совпадают. SwiftUI
+                // на одинаковые идентификаторы отвечает перепутанными ячейками.
+                ForEach(Array(weekdayNames.enumerated()), id: \.offset) { _, name in
                     Text(name)
                         .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(.secondary)
@@ -636,7 +639,10 @@ struct TimelineRow: View {
 
                 if !details.isEmpty || packing != nil {
                     HStack(spacing: 6) {
-                        ForEach(details, id: \.self) { detail in
+                        // Название категории и название места могут
+                        // совпасть — «Дом» и «Дом» — а одинаковый
+                        // идентификатор SwiftUI переживает плохо.
+                        ForEach(Array(details.enumerated()), id: \.offset) { _, detail in
                             Text(detail)
                                 .font(.caption)
                                 .padding(.horizontal, 7)
