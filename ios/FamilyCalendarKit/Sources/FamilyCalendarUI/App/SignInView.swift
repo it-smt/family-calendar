@@ -32,9 +32,26 @@ public struct SignInView: View {
     @State private var server = ServerAddress.current.absoluteString
     @State private var showingServer = false
 
+    /// Три способа оказаться внутри, а не два.
+    ///
+    /// Вход по почте и паролю долго отсутствовал, и это было не упущением в
+    /// мелочи: выйдя из календаря, человек не мог вернуться в него вообще —
+    /// оставалось завести новый, то есть пустой. Сервер умел `auth/login` с
+    /// самого начала, звать его было некому.
     enum Mode: String, CaseIterable {
-        case register = "Завести календарь"
-        case join = "Присоединиться"
+        case register = "Создать"
+        case join = "По коду"
+        case login = "Войти"
+    }
+
+    /// Строчка под переключателем: три коротких слова сами по себе не говорят,
+    /// чем «по коду» отличается от «войти».
+    private var hint: String {
+        switch mode {
+        case .register: "Новый календарь. Код приглашения появится в настройках."
+        case .join: "Первый раз на этом телефоне, по коду из чужих настроек."
+        case .login: "Уже был здесь — та же почта и пароль."
+        }
     }
 
     public var body: some View {
@@ -46,6 +63,11 @@ public struct SignInView: View {
                 VStack(spacing: 18) {
                     title
                     picker
+                    Text(hint)
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.8))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 8)
                     fields
                     serverField
                     if let problem { problemCard(problem) }
@@ -98,10 +120,15 @@ public struct SignInView: View {
 
     private var fields: some View {
         VStack(spacing: 0) {
-            field("Как тебя зовут", text: $displayName) {
-                $0.textContentType(.name)
+            // Имя спрашивают только у того, кого здесь ещё не знают. При входе
+            // оно уже на сервере, и предложить набрать его заново — это
+            // предложить набрать его неправильно.
+            if mode != .login {
+                field("Как тебя зовут", text: $displayName) {
+                    $0.textContentType(.name)
+                }
+                Divider().padding(.leading, 14)
             }
-            Divider().padding(.leading, 14)
             field("Почта", text: $email) {
                 $0.textContentType(.emailAddress)
                     .keyboardType(.emailAddress)
@@ -123,6 +150,8 @@ public struct SignInView: View {
                         .autocorrectionDisabled()
                         .font(.system(.body, design: .monospaced))
                 }
+            case .login:
+                EmptyView()
             }
         }
         .background(
@@ -195,7 +224,7 @@ public struct SignInView: View {
         Button {
             Task { await submit() }
         } label: {
-            Text(mode == .register ? "Создать" : "Войти")
+            Text(mode == .register ? "Создать календарь" : "Войти")
                 .font(.headline)
                 .foregroundStyle(Theme.Hour.at(Date()).gradient.from)
                 .frame(maxWidth: .infinity)
@@ -210,8 +239,12 @@ public struct SignInView: View {
     }
 
     private var isComplete: Bool {
-        !displayName.isEmpty && !email.isEmpty && password.count >= 8
-            && (mode == .register || !inviteCode.isEmpty)
+        guard !email.isEmpty, password.count >= 8 else { return false }
+        switch mode {
+        case .register: return !displayName.isEmpty
+        case .join: return !displayName.isEmpty && !inviteCode.isEmpty
+        case .login: return true
+        }
     }
 
     // MARK: Отправка
@@ -244,6 +277,8 @@ public struct SignInView: View {
                     displayName: displayName,
                     inviteCode: inviteCode.trimmingCharacters(in: .whitespaces).uppercased()
                 )
+            case .login:
+                session = try await api.login(email: email, password: password)
             }
 
             guard
@@ -278,7 +313,7 @@ public struct SignInView: View {
                     householdID: householdID,
                     userID: userID,
                     householdName: mode == .register ? householdName : nil,
-                    displayName: displayName,
+                    displayName: mode == .login ? nil : displayName,
                     inviteCode: session.inviteCode
                 )
             } catch {
@@ -313,7 +348,11 @@ public struct SignInView: View {
         } catch SyncAPI.Failure.unauthorized {
             problem = "Почта и пароль не совпадают."
         } catch SyncAPI.Failure.rejected(_, _) {
-            problem = mode == .join ? "Нет календаря с таким кодом." : "Не получилось создать календарь."
+            switch mode {
+            case .join: problem = "Нет календаря с таким кодом."
+            case .register: problem = "Не получилось создать календарь."
+            case .login: problem = "Почта и пароль не совпадают."
+            }
         } catch {
             problem = "Сервер \(ServerAddress.current.host() ?? "") не отвечает."
             showingServer = true
