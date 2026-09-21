@@ -29,6 +29,7 @@ public struct SignInView: View {
     @State private var inviteCode = ""
     @State private var isWorking = false
     @State private var problem: String?
+    @State private var recents = RecentSignIns.all
     @State private var server = ServerAddress.current.absoluteString
     @State private var showingServer = false
 
@@ -62,6 +63,7 @@ public struct SignInView: View {
             ScrollView {
                 VStack(spacing: 18) {
                     title
+                    recentList
                     picker
                     Text(hint)
                         .font(.caption)
@@ -85,6 +87,9 @@ public struct SignInView: View {
             .scrollDismissesKeyboard(.interactively)
         }
         .disabled(isWorking)
+        // Список читается заново при каждом появлении экрана: сюда попадают
+        // и после выхода из календаря, и он к этому моменту уже другой.
+        .onAppear { recents = RecentSignIns.all }
         .overlay {
             if isWorking {
                 ProgressView()
@@ -111,6 +116,86 @@ public struct SignInView: View {
         .padding(.bottom, 6)
     }
 
+    /// Кто уже входил с этого телефона.
+    ///
+    /// Пароля здесь нет: «Выйти» стирает его из Keychain, и помнить его в
+    /// обход этого значило бы, что выйти нельзя. Строка подставляет почту,
+    /// адрес и режим — дальше пароль либо набирают, либо его предлагает сама
+    /// iOS из связки ключей.
+    @ViewBuilder
+    private var recentList: some View {
+        if !recents.isEmpty {
+            VStack(spacing: 0) {
+                ForEach(recents) { entry in
+                    if entry.id != recents.first?.id {
+                        Divider().padding(.leading, 14)
+                    }
+                    recentRow(entry)
+                }
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(.white.opacity(0.14))
+            )
+            .padding(.bottom, 4)
+        }
+    }
+
+    private func recentRow(_ entry: RecentSignIn) -> some View {
+        HStack(spacing: 12) {
+            Button {
+                use(entry)
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "person.crop.circle")
+                        .font(.system(size: 26, weight: .light))
+                        .foregroundStyle(.white.opacity(0.9))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(entry.title)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.white)
+                        Text(entry.subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
+                    .lineLimit(1)
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                withAnimation(.snappy) {
+                    RecentSignIns.forget(entry)
+                    recents = RecentSignIns.all
+                }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.6))
+                    .padding(6)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Забыть \(entry.title)")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+    }
+
+    /// Подставляет запомненное и переводит экран в тот режим, который этому
+    /// человеку и нужен: он здесь уже был, значит вход, а не регистрация.
+    private func use(_ entry: RecentSignIn) {
+        withAnimation(.snappy) {
+            email = entry.email
+            server = entry.server
+            displayName = entry.displayName ?? displayName
+            mode = .login
+            problem = nil
+        }
+    }
+
     private var picker: some View {
         Picker("", selection: $mode.animation(.snappy)) {
             ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
@@ -130,14 +215,19 @@ public struct SignInView: View {
                 Divider().padding(.leading, 14)
             }
             field("Почта", text: $email) {
-                $0.textContentType(.emailAddress)
+                // .username, а не .emailAddress: связка ключей хранит пару
+                // «имя — пароль», и по второму типу она их не свяжет.
+                $0.textContentType(.username)
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
             }
             Divider().padding(.leading, 14)
             SecureField("Пароль (от 8 знаков)", text: $password)
-                .textContentType(.password)
+                // Новый пароль и вспоминаемый — разные вещи для iOS: на
+                // первом она предлагает придумать и сохранить, на втором —
+                // подставить сохранённое.
+                .textContentType(mode == .login ? .password : .newPassword)
                 .padding(14)
             Divider().padding(.leading, 14)
 
@@ -153,12 +243,35 @@ public struct SignInView: View {
             case .login:
                 EmptyView()
             }
+
+            if mode == .join, inviteCode.isEmpty, let known = rememberedCode {
+                Divider().padding(.leading, 14)
+                Button {
+                    withAnimation(.snappy) { inviteCode = known }
+                } label: {
+                    Label("Код прошлого календаря: \(known)", systemImage: "clock.arrow.circlepath")
+                        .font(.caption)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                }
+                .buttonStyle(.plain)
+            }
         }
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(Color(.systemBackground))
         )
         .shadow(color: .black.opacity(0.22), radius: 16, y: 8)
+    }
+
+    /// Код календаря, в который с этого телефона уже заходили. Нужен после
+    /// переустановки: код не меняется, а посмотреть его больше негде — он
+    /// живёт в настройках, а в настройки не попасть, не войдя.
+    private var rememberedCode: String? {
+        recents.compactMap(\.inviteCode).first.flatMap {
+            // Заглушка, записанная до первой синхронизации, кодом не является.
+            $0.count == 8 ? $0 : nil
+        }
     }
 
     private func field<Styled: View>(
@@ -343,6 +456,21 @@ public struct SignInView: View {
                     )
                 }
             }
+
+            // Записывается только удавшийся вход: список для того, чтобы
+            // вернуться, а не чтобы хранить опечатки.
+            RecentSignIns.remember(
+                RecentSignIn(
+                    displayName: mode == .login ? nil : displayName,
+                    email: email,
+                    server: ServerAddress.current.absoluteString,
+                    householdName: mode == .register ? householdName : nil,
+                    // Код самого календаря — сервер возвращает его при любом
+                    // из трёх входов, и он один и тот же. Набранный вручную
+                    // сюда не годится: регистр и пробелы уже не те.
+                    inviteCode: session.inviteCode
+                )
+            )
 
             onSignedIn(environment)
         } catch SyncAPI.Failure.unauthorized {
